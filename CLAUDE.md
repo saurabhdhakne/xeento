@@ -167,7 +167,10 @@ interface TrashRecord { id: string; deletedAt: number; pages: PageRecord[]; }
   BlockNote's `editor.resolveFileUrl`; `createFileUrlResolver()` in
   `use-files.ts` keeps an object-URL cache per editor, revoked on unmount.
 - **Internal links:** `xeento-page://<id>`, intercepted by a click listener
-  in `app-shell.tsx` that calls `openPage`.
+  in `app-shell.tsx` that calls `openPage`. Page mentions (`pageMention`
+  inline, `props.pageId`), sub-page cards (`subPage` block) and backlink
+  rows all render as these anchors, so they need no navigation plumbing.
+  Both store only the id and read the live title via `usePageOrNull`.
 
 ---
 
@@ -180,7 +183,9 @@ before changing it.
 - `pages.ts`: page CRUD. `movePageToPosition` handles reorder, re-parent and
   folder moves, and enforces the nested-`folderId: null` invariant. Also
   `toggleFavourite`, `reorderFavourites`, `touchLastOpened`, `setPageTags`,
-  `duplicatePage(id, afterId = id)`. Pages are never hard-deleted here.
+  `duplicatePage(id, afterId = id)` (builds every copy before adding any,
+  then remaps `subPage` ids to the copies). Pages are never hard-deleted
+  here.
 - `trash.ts` (+ `use-trash.ts`): `trashPage`, `restoreFromTrash` (falls
   back to Pages root if the parent page/folder is gone), `deleteFromTrash`,
   `emptyTrash`, `purgeExpiredTrash` (30 days, run on load from
@@ -200,7 +205,9 @@ before changing it.
   `folderId: null`) would vanish.
 - `dnd-utils.ts`: nest/reorder math and `rowDragListeners` (whole-row drag
   that ignores rename inputs and portal-bubbled events).
-- `block-text.ts` (content → plain text for search), `recency.ts` (date
+- `block-text.ts` (content → plain text for search; `pageLinkIds` for
+  backlinks: mentions + `xeento-page://` links, not sub-page cards),
+  `recency.ts` (date
   buckets), `use-local-storage-flag.ts` (hydration-safe boolean flag).
 
 **Shell and sidebar (`src/components/`)**
@@ -217,18 +224,24 @@ before changing it.
 - `ui/popover.tsx`, `ui/context-menu.tsx`: portaled to `document.body` and
   viewport-clamped, because the sidebar `<aside>` is `overflow-hidden`.
 - `page-view.tsx`: title (`TitleField`), icon, sticky toolbar (star + "…"
-  export menu), tags, editor, hidden print subtree.
+  menu: Move to + export), tags, editor, `backlinks.tsx`, hidden print
+  subtree.
+- `move-to-dialog.tsx`: keyboard move via `movePageToPosition` (to the
+  end). Opened from the "…" menu or Cmd/Ctrl+Shift+M; state lives in
+  `AppShell`.
 
 **Editor (`src/components/editor/`)**
 - `block-editor.tsx`: BlockNote wrapper. 400ms debounced autosave with
   flush-on-unmount. Custom slash menu (BlockNote's default omits custom
-  blocks). `pasteHandler` for the paste-URL menu. Block-type dropdown adds
-  Code block.
+  blocks; `/page` creates a child then a `subPage` card). `@` and `[[`
+  page menus are two more `SuggestionMenuController`s (multi-char triggers
+  work; `@` uses `shouldOpen` to require a word start). `pasteHandler`
+  for the paste-URL menu. Block-type dropdown adds Code block.
 - `schema.ts`: the single schema (see Project rules).
-- `blocks/`: `file-block` (BlockNote's own + size label), `pdf-block` +
+- `blocks/`: `sub-page-block`, `file-block` (BlockNote's own + size label), `pdf-block` +
   `pdf-viewer` (lazy per-page canvas, not virtualized), `embed-block`
   (providers in `lib/embed-providers.ts`), `bookmark-block`, `code-block`.
-- `inline/link-mention.tsx`, `paste-url-menu.tsx` (re-checks the pasted
+- `inline/link-mention.tsx`, `inline/page-mention.tsx`, `paste-url-menu.tsx` (re-checks the pasted
   range still holds the URL before replacing).
 - **code-block gotcha:** the line-number gutter is a sibling column, never
   inside the ProseMirror-managed `pre`. To get the base `{dom, contentDOM}`,
@@ -246,6 +259,9 @@ IPs on every redirect, reads up to `</head>` (2MB cap), 6s timeout.
   that aren't open.
 - `rewrite-file-refs.ts`: `xeento-file://` → `assets/…`; drops `data:` urls
   instead of inlining them.
+- `resolve-page-refs.ts`: page mentions / sub-page cards → plain title
+  text before Markdown conversion (their React render can't look titles
+  up headlessly and would export as "…").
 - `markdown-export.ts`: single `.md`, or a zip (folder per page + shared
   `assets/`); `exportWorkspaceAsZip`.
 - **PDF:** `printable-document.tsx` / `printable-page.tsx` render a hidden

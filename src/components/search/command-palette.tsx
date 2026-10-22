@@ -28,7 +28,7 @@ interface ResultItem {
   snippet: string;
 }
 
-function getPagePath(
+export function getPagePath(
   page: PageRecord,
   pagesById: Map<string, PageRecord>,
   foldersById: Map<string, FolderRecord>,

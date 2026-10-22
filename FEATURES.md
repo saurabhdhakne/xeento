@@ -150,7 +150,9 @@ whole sub-page tree into the slot right below the original (same parent,
 same folder). The top copy is titled "<title> (copy)"; sub-pages keep
 their titles. Icon, tags and content are copied. The copy starts
 un-favourited, absent from Recent, and is not opened. Uploaded files are
-shared, not re-stored.
+shared, not re-stored. Sub-page cards (ED-10) inside the copied tree point
+at the copied sub-pages; page mentions keep pointing at their original
+targets.
 
 **Test:**
 1. Right-click a page row → menu with "Duplicate" at the cursor (no
@@ -166,6 +168,8 @@ shared, not re-stored.
    not in Recent.
 7. Right-click a row near the bottom/right window edge → menu stays fully
    on screen.
+8. Duplicate a page whose content has a `/page` card → the copy's card
+   opens the copy's sub-page, not the original's.
 
 **Code:** `src/components/ui/context-menu.tsx`, `src/lib/pages.ts`
 (`duplicatePage`)
@@ -240,7 +244,8 @@ via the command palette's tag filter (SR-01).
 ### PG-04 Page toolbar
 
 **Behavior:** A full-width row above the title holds the favourite star
-(outlined/filled `#FACC15`) and the "…" menu (export, see IO-01/IO-02).
+(outlined/filled `#FACC15`) and the "…" menu (Move to…, PG-07; export,
+IO-01/IO-02).
 The row is sticky: it stays at the top while the page scrolls, with
 content scrolling underneath. Hidden in print/PDF.
 
@@ -281,6 +286,52 @@ Windows/Linux use Ctrl.
 **Code:** `src/components/app-shell.tsx`, `src/lib/pages.ts`
 (`duplicatePage`)
 
+### PG-06 Backlinks ("Linked from")
+
+**Behavior:** Below the editor, a "Linked from · N" list shows every page
+whose content has a page mention (ED-09) or an internal `xeento-page://`
+link (e.g. from Notion import) pointing at this page, sorted by title.
+Sub-page cards (ED-10) don't count. Click a row to open that page.
+Updates live; hidden when nothing links here, and in print/PDF. Pages in
+Trash don't appear.
+
+**Test:**
+1. On page A, mention page B (`@B`). Open B → "Linked from · 1" lists A.
+2. Rename A → B's list shows the new title.
+3. Click A in the list → A opens.
+4. Delete the mention from A, open B → the section is gone.
+5. Mention B from A again, move A to Trash → B's list no longer shows A;
+   restore A → it's back.
+6. Import `test-fixtures/notion-export-sample.zip`, open the page the
+   cross-page link points to → it lists the linking page.
+
+**Code:** `src/components/backlinks.tsx`, `src/lib/block-text.ts`
+(`pageLinkIds`)
+
+### PG-07 Move to…
+
+**Behavior:** The keyboard alternative to dragging in the sidebar. Open
+with the page "…" menu → "Move to…" or Cmd/Ctrl+Shift+M (works anywhere,
+including the editor). Lists Pages (root), every folder, and every page,
+each with its location; type to filter, ↑ ↓ to pick, Enter or click to
+move, Esc to cancel. The page moves with its sub-pages to the end of the
+chosen location and stays open; a "Moved to <name>" toast confirms. The
+page itself, its sub-pages and its current location aren't listed.
+
+**Test:**
+1. Open a root page, press Cmd/Ctrl+Shift+M → dialog with the input
+   focused.
+2. Type part of a folder name, Enter → page is last in that folder; toast.
+3. Press it again, pick another page → it nests under that page (last
+   child); the sidebar expands to show it.
+4. Pick "Pages" → back at the end of the top level.
+5. In the list, the page itself and its sub-pages never appear.
+6. Esc or clicking outside → closes, nothing moves.
+7. Page "…" → "Move to…" → same dialog.
+
+**Code:** `src/components/move-to-dialog.tsx`, `src/lib/pages.ts`
+(`movePageToPosition`)
+
 ---
 
 ## Editor and blocks
@@ -288,7 +339,7 @@ Windows/Linux use Ctrl.
 ### ED-01 Block editor basics
 
 **Behavior:** BlockNote editor with slash menu (including custom blocks:
-`/pdf`, `/embed`, `/bookmark`, `/file`, `/code`), drag handles and
+`/page`, `/pdf`, `/embed`, `/bookmark`, `/file`, `/code`), drag handles and
 markdown shortcuts.
 
 **Test:**
@@ -429,6 +480,57 @@ and stored. The preview route refuses private/local addresses.
 `inline/link-mention.tsx`, `blocks/bookmark-block.tsx`,
 `src/app/api/link-preview/route.ts`
 
+### ED-09 Page mentions (`@` / `[[`)
+
+**Behavior:** Typing `@` (at the start of a line or after a space) or
+`[[` opens a page menu: up to 10 pages whose title contains the typed
+text, most recently opened first (the current page excluded), then
+**New page "<text>"**, which creates a sub-page of the current page with
+that title and links to it. Arrow keys + Enter or click insert an inline
+chip with the target's icon and title. The chip always shows the page's
+current title/icon. Clicking it opens the page. If the target is deleted
+or in Trash, the chip reads "Deleted page" (struck through); restoring
+the page brings it back. `@` right after a word (e.g. an email) and a
+space right after the trigger don't open/keep the menu. Neither trigger
+works in code blocks. Mentions count as backlinks (PG-06).
+
+**Test:**
+1. Type `@` then part of a page's title → menu lists matching pages; Enter
+   → chip with icon and title.
+2. Type `[[` → same menu; pick a page → chip, and the `[[` is gone.
+3. Click the chip → that page opens.
+4. Rename the target → the chip updates.
+5. Type `@Meeting notes`, pick **New page "Meeting notes"** → a sub-page
+   with that title appears under the current page in the sidebar; the chip
+   links to it.
+6. Type `me@example.com` → no menu. Type `@ ` (space) → menu closes.
+7. Move the target to Trash → chip shows "Deleted page"; restore → normal.
+8. Inside a code block, type `@` and `[[` → no menu.
+9. Reload → chips are kept.
+
+**Code:** `src/components/editor/inline/page-mention.tsx`,
+`src/components/editor/block-editor.tsx` (`getPageMentionItems`)
+
+### ED-10 Sub-page block
+
+**Behavior:** `/page` creates a new sub-page of the current page and
+inserts a card for it (icon + title, live). Clicking the card opens the
+sub-page. The card is only a link: deleting it leaves the page in the
+sidebar, and sub-pages created from the sidebar don't get a card. A
+deleted target shows "Deleted page". Duplicating the page (SB-06/PG-05)
+points the copy's cards at the copied sub-pages.
+
+**Test:**
+1. Type `/page`, Enter → a card "Untitled" appears; the sidebar shows a
+   new sub-page under the current page.
+2. Click the card → the sub-page opens; rename it, go back → the card
+   shows the new title and icon.
+3. Delete the card → the sub-page is still in the sidebar.
+4. Drag the card to another position → it moves like any block.
+5. Trash the sub-page → card shows "Deleted page".
+
+**Code:** `src/components/editor/blocks/sub-page-block.tsx`
+
 ---
 
 ## Search
@@ -462,7 +564,8 @@ snippets. Arrow keys navigate; click or Enter opens.
 single page with no attachments downloads as `.md`. With sub-pages or
 attachments it downloads a `.zip` (one folder per page mirroring the tree,
 shared `assets/`, relative links). Mentions and bookmarks export as
-`[title](url)`; embeds as the URL.
+`[title](url)`; embeds as the URL. Page mentions and sub-page cards export
+as the target's title in plain text ("Deleted page" if it's gone).
 
 **Test:**
 1. Export a text-only page → plain `.md` opens correctly.
@@ -470,6 +573,8 @@ shared `assets/`, relative links). Mentions and bookmarks export as
    folders and `assets/`; images display in a Markdown viewer.
 3. Export a page with a mention and a bookmark → both appear as
    `[title](url)`.
+4. Export a page with a page mention and a `/page` card → both appear as
+   the target's title.
 
 **Code:** `src/lib/export/markdown-export.ts`
 
@@ -666,9 +771,11 @@ including the editor and code highlighting.
 |---|---|---|---|
 | Open search | Cmd+K | Ctrl+K | Anywhere |
 | Toggle sidebar | Cmd+\\ | Ctrl+\\ | Anywhere |
+| Move open page to… | Cmd+Shift+M | Ctrl+Shift+M | Anywhere |
+| Mention a page | @ or [[ | @ or [[ | Editor |
 | Copy open page | Cmd+C | Ctrl+C | Not typing, no text selected |
 | Paste page copy | Cmd+V | Ctrl+V | Not typing |
-| Navigate / choose | ↑ ↓ Enter | ↑ ↓ Enter | Search, "Paste as" menu |
+| Navigate / choose | ↑ ↓ Enter | ↑ ↓ Enter | Search, Move to, page and "Paste as" menus |
 | Close menu | Esc | Esc | Menus, "Paste as" menu |
 | Indent | Tab | Tab | Code block |
 | Slash menu | / | / | Editor |
@@ -691,6 +798,8 @@ including the editor and code highlighting.
   syntax may not be rewritten.
 - Some sites refuse to be iframed; their embeds show the "open" link.
 - The page clipboard (PG-05) is in-app and clears on reload.
+- Search (SR-01) doesn't match a page mention's title text; Markdown
+  export turns page links into plain titles, not links between files.
 
 ---
 
@@ -728,3 +837,8 @@ round-trip.
 cleanup, DS-04 full backup and restore.
 - DS-04: backup progress toast and slow/failed-backup warnings
 - Toasts render again (`ToastHost` was never mounted, so no toast showed)
+
+**Milestone 5 — Linking pages:** ED-09 page mentions (`@` / `[[`), PG-06
+backlinks, ED-10 sub-page block, PG-07 Move to… dialog (PG-04 "…" menu,
+Cmd/Ctrl+Shift+M). SB-06/PG-05 duplicate remaps sub-page cards; IO-01
+exports page links as titles.

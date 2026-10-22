@@ -28,6 +28,10 @@ export async function getPage(id: string): Promise<PageRecord | undefined> {
   return db.pages.get(id);
 }
 
+export async function getAllPages(): Promise<PageRecord[]> {
+  return db.pages.toArray();
+}
+
 export async function nextOrder(parentId: string, folderId: string | null = null): Promise<number> {
   const siblings = await getChildren(parentId, folderId);
   if (siblings.length === 0) return ORDER_STEP;
@@ -219,24 +223,40 @@ export async function duplicatePage(
       if (siblings[i] === root) root.order = order;
       else if (siblings[i].order !== order) await db.pages.update(siblings[i].id, { order });
     }
-    await db.pages.add(root);
-
-    // `created` matters when pasting into the source's own subtree: the new
-    // copies then sit under pages the walk is still visiting, and must not
-    // be copied again (that would never terminate).
-    const created = new Set([root.id]);
+    // Copies are only added once the walk is done, so pasting into the
+    // source's own subtree never makes the walk visit (and re-copy) them.
+    const copies = [root];
+    const idMap = new Map([[id, root.id]]);
     const queue: [string, string][] = [[id, root.id]];
     while (queue.length) {
       const [fromId, toId] = queue.shift()!;
       const children = await db.pages.where("parentId").equals(fromId).toArray();
       for (const child of children) {
-        if (created.has(child.id)) continue;
         const copy = copyOf(child, toId, { folderId: null });
-        created.add(copy.id);
-        await db.pages.add(copy);
+        copies.push(copy);
+        idMap.set(child.id, copy.id);
         queue.push([child.id, copy.id]);
       }
     }
+    // Sub-page cards inside the copied tree point at the copied children.
+    for (const copy of copies) remapSubPageIds(copy.content, idMap);
+    await db.pages.bulkAdd(copies);
     return root;
   });
+}
+
+interface ContentBlock {
+  type?: string;
+  props?: { pageId?: string };
+  children?: ContentBlock[];
+}
+
+/** Rewrites `subPage` blocks' pageId through `idMap`, in place. */
+function remapSubPageIds(blocks: unknown, idMap: Map<string, string>) {
+  if (!Array.isArray(blocks)) return;
+  for (const block of blocks as ContentBlock[]) {
+    const target = block?.type === "subPage" ? block.props?.pageId : undefined;
+    if (target && idMap.has(target)) block.props!.pageId = idMap.get(target);
+    remapSubPageIds(block?.children, idMap);
+  }
 }

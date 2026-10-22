@@ -18,8 +18,9 @@ import {
   insertOrUpdateBlockForSlashMenu,
   type PartialBlock,
 } from "@blocknote/core";
-import { Bookmark, Code, FileText, Video } from "lucide-react";
-import { setPageContent } from "@/lib/pages";
+import type { SuggestionMenuOptions } from "@blocknote/core/extensions";
+import { Bookmark, Code, FilePlus, FileText, Video } from "lucide-react";
+import { createPage, getAllPages, setPageContent } from "@/lib/pages";
 import { uploadFileToFileStore } from "@/lib/upload-file";
 import { createFileUrlResolver } from "@/lib/use-files";
 import { blockTypeForFile } from "@/lib/block-type-for-file";
@@ -35,8 +36,20 @@ type XeentoEditor = typeof xeentoSchema.BlockNoteEditor;
 // generator only knows about its own built-in block types (confirmed by
 // reading its source: a fixed key list, nothing derived from the schema), so
 // without these entries "/pdf" and "/embed" never had a menu item at all.
-function getCustomSlashMenuItems(editor: XeentoEditor): DefaultReactSuggestionItem[] {
+function getCustomSlashMenuItems(editor: XeentoEditor, pageId: string): DefaultReactSuggestionItem[] {
   return [
+    {
+      title: "Page",
+      subtext: "Create a sub-page and show it here",
+      aliases: ["page", "subpage", "sub-page", "child"],
+      group: "Basic blocks",
+      icon: <FileText size={18} />,
+      onItemClick: () => {
+        void createPage(pageId).then((page) =>
+          insertOrUpdateBlockForSlashMenu(editor, { type: "subPage", props: { pageId: page.id } }),
+        );
+      },
+    },
     {
       title: "PDF",
       subtext: "Embed a PDF file",
@@ -62,6 +75,51 @@ function getCustomSlashMenuItems(editor: XeentoEditor): DefaultReactSuggestionIt
       onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: "bookmark" }),
     },
   ];
+}
+
+const PAGE_MENU_LIMIT = 10;
+
+// Items for the `@` and `[[` menus: pages whose title contains the query
+// (most recently opened first), then "New page" to create a sub-page of
+// this page titled with the query. A query starting with a space (`@ `)
+// isn't a mention: no items, which closes the menu.
+async function getPageMentionItems(
+  editor: XeentoEditor,
+  pageId: string,
+  query: string,
+): Promise<DefaultReactSuggestionItem[]> {
+  if (/^\s/.test(query)) return [];
+  const q = query.trim().toLowerCase();
+  const mention = (id: string) =>
+    editor.insertInlineContent([{ type: "pageMention", props: { pageId: id } }, " "]);
+  const matches = (await getAllPages())
+    .filter((p) => p.id !== pageId && (p.title || "Untitled").toLowerCase().includes(q))
+    .sort((a, b) => (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0))
+    .slice(0, PAGE_MENU_LIMIT);
+  return [
+    ...matches.map((p) => ({
+      title: p.title || "Untitled",
+      icon: p.icon ? <span>{p.icon}</span> : <FileText size={18} />,
+      group: "Link to page",
+      onItemClick: () => mention(p.id),
+    })),
+    {
+      title: q ? `New page "${query.trim()}"` : "New page",
+      subtext: "Create a sub-page and link to it",
+      icon: <FilePlus size={18} />,
+      group: "Create",
+      onItemClick: () => {
+        void createPage(pageId, query.trim() || "Untitled").then((p) => mention(p.id));
+      },
+    },
+  ];
+}
+
+// `@` only opens a page menu at the start of a block or after whitespace,
+// so typing an email address doesn't.
+function atWordStart(tr: Parameters<NonNullable<SuggestionMenuOptions["shouldOpen"]>>[0]) {
+  const before = tr.selection.$from.nodeBefore?.text;
+  return !before || /\s$/.test(before);
 }
 
 // BlockNote's formatting-toolbar block-type dropdown lists only its built-in
@@ -174,10 +232,19 @@ export function BlockEditor({ pageId, initialContent }: BlockEditorProps) {
           triggerCharacter="/"
           getItems={async (query) =>
             filterSuggestionItems(
-              [...getDefaultReactSlashMenuItems(editor), ...getCustomSlashMenuItems(editor)],
+              [...getDefaultReactSlashMenuItems(editor), ...getCustomSlashMenuItems(editor, pageId)],
               query,
             )
           }
+        />
+        <SuggestionMenuController
+          triggerCharacter="@"
+          shouldOpen={atWordStart}
+          getItems={(query) => getPageMentionItems(editor, pageId, query)}
+        />
+        <SuggestionMenuController
+          triggerCharacter="[["
+          getItems={(query) => getPageMentionItems(editor, pageId, query)}
         />
       </BlockNoteView>
       {pastedUrl && <PasteUrlMenu editor={editor} pasted={pastedUrl} onClose={closePasteMenu} />}

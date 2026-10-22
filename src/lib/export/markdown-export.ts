@@ -1,11 +1,17 @@
 import JSZip from "jszip";
 import { downloadBlob, sanitizeFileName, dedupeName } from "@/lib/download";
 import { ROOT_ID, type PageRecord } from "@/lib/db";
-import { getChildren, getPage } from "@/lib/pages";
+import { getAllPages, getChildren, getPage } from "@/lib/pages";
 import { getFile } from "@/lib/files";
 import { getAllFolders } from "@/lib/folders";
 import { rewriteFileRefs, type CollectedAsset } from "./rewrite-file-refs";
 import { blocksToMarkdown } from "./headless-editor";
+import { resolvePageRefs } from "./resolve-page-refs";
+
+/** Page id → title, for turning page mentions and sub-page cards into text. */
+async function getPageTitles(): Promise<Map<string, string>> {
+  return new Map((await getAllPages()).map((p) => [p.id, p.title || "Untitled"]));
+}
 
 function pageHeading(page: PageRecord): string {
   return `# ${page.icon ? `${page.icon} ` : ""}${page.title || "Untitled"}`;
@@ -14,8 +20,9 @@ function pageHeading(page: PageRecord): string {
 async function pageMarkdown(
   page: PageRecord,
   pathPrefix: string,
+  titles: Map<string, string>,
 ): Promise<{ markdown: string; assets: CollectedAsset[] }> {
-  const { blocks, assets } = await rewriteFileRefs(page.content, pathPrefix);
+  const { blocks, assets } = await rewriteFileRefs(resolvePageRefs(page.content, titles), pathPrefix);
   const body = blocksToMarkdown(blocks);
   return { markdown: `${pageHeading(page)}\n\n${body}`, assets };
 }
@@ -33,12 +40,13 @@ async function addPageFolder(
   includeChildren: boolean,
   assetsOut: Map<string, CollectedAsset>,
   siblingNames: Set<string>,
+  titles: Map<string, string>,
 ): Promise<void> {
   const title = dedupeName(sanitizeFileName(page.title), siblingNames);
   const pageFolder = parentZipFolder.folder(title);
   if (!pageFolder) return;
 
-  const { markdown, assets } = await pageMarkdown(page, "../".repeat(depth + 1));
+  const { markdown, assets } = await pageMarkdown(page, "../".repeat(depth + 1), titles);
   pageFolder.file(`${title}.md`, markdown);
   for (const asset of assets) assetsOut.set(asset.fileId, asset);
 
@@ -46,7 +54,7 @@ async function addPageFolder(
     const children = await getChildren(page.id);
     const childNames = new Set<string>();
     for (const child of children) {
-      await addPageFolder(pageFolder, child, depth + 1, true, assetsOut, childNames);
+      await addPageFolder(pageFolder, child, depth + 1, true, assetsOut, childNames, titles);
     }
   }
 }
@@ -68,7 +76,8 @@ export async function exportPageAsMarkdown(pageId: string, includeSubpages: bool
   if (!page) throw new Error("Page not found");
 
   const children = includeSubpages ? await getChildren(page.id) : [];
-  const probe = await pageMarkdown(page, "");
+  const titles = await getPageTitles();
+  const probe = await pageMarkdown(page, "", titles);
 
   if (children.length === 0 && probe.assets.length === 0) {
     downloadBlob(
@@ -80,7 +89,7 @@ export async function exportPageAsMarkdown(pageId: string, includeSubpages: bool
 
   const zip = new JSZip();
   const assetsOut = new Map<string, CollectedAsset>();
-  await addPageFolder(zip, page, 0, includeSubpages, assetsOut, new Set());
+  await addPageFolder(zip, page, 0, includeSubpages, assetsOut, new Set(), titles);
   await writeAssets(zip, assetsOut);
 
   const blob = await zip.generateAsync({ type: "blob" });
@@ -92,6 +101,7 @@ export async function exportWorkspaceAsZip(): Promise<void> {
   const zip = new JSZip();
   const assetsOut = new Map<string, CollectedAsset>();
   const topLevelNames = new Set<string>();
+  const titles = await getPageTitles();
 
   const folders = await getAllFolders();
   for (const folder of folders) {
@@ -101,13 +111,13 @@ export async function exportWorkspaceAsZip(): Promise<void> {
     const pages = await getChildren(ROOT_ID, folder.id);
     const siblingNames = new Set<string>();
     for (const page of pages) {
-      await addPageFolder(folderZip, page, 1, true, assetsOut, siblingNames);
+      await addPageFolder(folderZip, page, 1, true, assetsOut, siblingNames, titles);
     }
   }
 
   const unfolderedPages = await getChildren(ROOT_ID, null);
   for (const page of unfolderedPages) {
-    await addPageFolder(zip, page, 0, true, assetsOut, topLevelNames);
+    await addPageFolder(zip, page, 0, true, assetsOut, topLevelNames, titles);
   }
 
   await writeAssets(zip, assetsOut);

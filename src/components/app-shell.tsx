@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/sidebar/sidebar";
 import { PageView } from "@/components/page-view";
 import { EmptyState } from "@/components/empty-state";
 import { CommandPalette } from "@/components/search/command-palette";
+import { MoveToDialog } from "@/components/move-to-dialog";
 import { ROOT_ID } from "@/lib/db";
 import { useAllPages } from "@/lib/use-pages";
 import { useAllFolders } from "@/lib/use-folders";
@@ -39,6 +40,7 @@ export function AppShell() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = useLocalStorageFlag("xeento:sidebar-open", true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   // Recent's order+membership snapshot, taken once per load (see below) —
   // kept out of the live-reactive render path on purpose so opening pages
   // during a session doesn't reshuffle the Recent list underneath the user.
@@ -122,12 +124,16 @@ export function AppShell() {
     });
   }, [selectedId, pagesById, foldersById]);
 
-  // Global shortcuts: Cmd/Ctrl+K for search, Cmd/Ctrl+\ for the sidebar.
+  // Global shortcuts: Cmd/Ctrl+K for search, Cmd/Ctrl+\ for the sidebar,
+  // Cmd/Ctrl+Shift+M to move the open page.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
-      if (e.key.toLowerCase() === "k") {
+      if (e.shiftKey && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        setMoveOpen(true);
+      } else if (e.key.toLowerCase() === "k") {
         e.preventDefault();
         setSearchOpen((v) => !v);
       } else if (e.key === "\\") {
@@ -274,7 +280,7 @@ export function AppShell() {
           </button>
         )}
         {loading ? null : selectedId ? (
-          <PageView key={selectedId} pageId={selectedId} />
+          <PageView key={selectedId} pageId={selectedId} onMoveTo={() => setMoveOpen(true)} />
         ) : (
           <EmptyState onCreate={handleCreateRoot} />
         )}
@@ -286,6 +292,14 @@ export function AppShell() {
         folders={allFolders}
         onOpenPage={openPage}
       />
+      {moveOpen && selectedId && (
+        <MoveToDialog
+          pageId={selectedId}
+          pages={allPages}
+          folders={allFolders}
+          onClose={() => setMoveOpen(false)}
+        />
+      )}
     </div>
   );
 }

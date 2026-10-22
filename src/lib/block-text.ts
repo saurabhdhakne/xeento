@@ -1,7 +1,8 @@
 interface InlineNode {
   type?: string;
   text?: string;
-  props?: { title?: string };
+  href?: string;
+  props?: { title?: string; pageId?: string };
   content?: InlineNode[];
 }
 
@@ -33,4 +34,36 @@ export function blockNoteToPlainText(blocks: unknown): string {
   const out: string[] = [];
   for (const block of blocks as BlockNode[]) walkBlock(block, out);
   return out.join(" ");
+}
+
+const PAGE_LINK_PREFIX = "xeento-page://";
+
+function walkInlineLinks(nodes: InlineNode[] | undefined, out: Set<string>) {
+  if (!Array.isArray(nodes)) return;
+  for (const node of nodes) {
+    if (node?.type === "pageMention" && node.props?.pageId) out.add(node.props.pageId);
+    if (node?.type === "link" && node.href?.startsWith(PAGE_LINK_PREFIX)) {
+      out.add(node.href.slice(PAGE_LINK_PREFIX.length));
+    }
+    if (Array.isArray(node?.content)) walkInlineLinks(node.content, out);
+  }
+}
+
+function walkBlockLinks(block: BlockNode, out: Set<string>) {
+  walkInlineLinks(block?.content, out);
+  if (Array.isArray(block?.children)) {
+    for (const child of block.children) walkBlockLinks(child, out);
+  }
+}
+
+/**
+ * Ids of the pages a BlockNote `content` JSON document links to: page
+ * mentions and `xeento-page://` links (sub-page cards don't count). Used
+ * for backlinks, the same way blockNoteToPlainText feeds search.
+ */
+export function pageLinkIds(blocks: unknown): Set<string> {
+  const out = new Set<string>();
+  if (!Array.isArray(blocks)) return out;
+  for (const block of blocks as BlockNode[]) walkBlockLinks(block, out);
+  return out;
 }

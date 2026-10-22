@@ -4,7 +4,9 @@ import { pdfBlockSpec } from "./blocks/pdf-block";
 import { embedBlockSpec } from "./blocks/embed-block";
 import { bookmarkBlockSpec } from "./blocks/bookmark-block";
 import { codeBlockSpec } from "./blocks/code-block";
+import { subPageBlockSpec } from "./blocks/sub-page-block";
 import { linkMentionSpec } from "./inline/link-mention";
+import { pageMentionSpec } from "./inline/page-mention";
 
 /**
  * The one editor schema used everywhere BlockNote content is rendered —
@@ -20,9 +22,11 @@ export const xeentoSchema = BlockNoteSchema.create({
     embed: embedBlockSpec(),
     bookmark: bookmarkBlockSpec(),
     codeBlock: codeBlockSpec,
+    subPage: subPageBlockSpec(),
   },
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,
     linkMention: linkMentionSpec,
+    pageMention: pageMentionSpec,
   },
 });

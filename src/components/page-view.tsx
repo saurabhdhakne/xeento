@@ -8,10 +8,11 @@ import { BlockEditor } from "@/components/editor/block-editor";
 import { PrintableDocument } from "@/components/editor/printable-document";
 import { TagEditor } from "@/components/tag-editor";
 import { ExportMenu } from "@/components/export-menu";
+import { Backlinks } from "@/components/backlinks";
 import { usePage } from "@/lib/use-pages";
 import { renamePage, setPageIcon, setPageTags, toggleFavourite, getDescendantIds } from "@/lib/pages";
 
-export function PageView({ pageId }: { pageId: string }) {
+export function PageView({ pageId, onMoveTo }: { pageId: string; onMoveTo: () => void }) {
   const page = usePage(pageId);
   const [titleDraft, setTitleDraft] = useState(page?.title ?? "");
   const [printPageIds, setPrintPageIds] = useState<string[] | null>(null);
@@ -69,7 +70,11 @@ export function PageView({ pageId }: { pageId: string }) {
             strokeWidth={1.75}
           />
         </button>
-        <ExportMenu pageId={pageId} onPrint={(includeSubpages) => void handlePrint(includeSubpages)} />
+        <ExportMenu
+          pageId={pageId}
+          onPrint={(includeSubpages) => void handlePrint(includeSubpages)}
+          onMoveTo={onMoveTo}
+        />
       </div>
       <div className="mx-auto w-full max-w-3xl px-10 pb-16 print:hidden">
         <IconPicker icon={page.icon} onChange={(icon) => void setPageIcon(pageId, icon)} size="lg" />
@@ -93,6 +98,8 @@ export function PageView({ pageId }: { pageId: string }) {
             initialContent={(page.content as PartialBlock[]) ?? []}
           />
         </div>
+
+        <Backlinks pageId={pageId} />
       </div>
 
       {printPageIds && (
