@@ -35,10 +35,18 @@ export interface FileRecord {
   createdAt: number;
 }
 
+/** One deleted page with its whole sub-page tree, as it was when deleted. */
+export interface TrashRecord {
+  id: string; // the deleted (top) page's id
+  deletedAt: number;
+  pages: PageRecord[]; // the top page first, then its descendants
+}
+
 export const db = new Dexie("xeento") as Dexie & {
   pages: EntityTable<PageRecord, "id">;
   folders: EntityTable<FolderRecord, "id">;
   files: EntityTable<FileRecord, "id">;
+  trash: EntityTable<TrashRecord, "id">;
 };
 
 db.version(1).stores({
@@ -67,4 +75,11 @@ db.version(3).stores({
   pages: "id, parentId, folderId, order, updatedAt",
   folders: "id, order",
   files: "id, mimeType, createdAt",
+});
+
+db.version(4).stores({
+  pages: "id, parentId, folderId, order, updatedAt",
+  folders: "id, order",
+  files: "id, mimeType, createdAt",
+  trash: "id, deletedAt",
 });

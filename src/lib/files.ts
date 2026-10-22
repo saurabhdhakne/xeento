@@ -20,11 +20,8 @@ function formatBytes(bytes: number): string {
 /**
  * Stores a file's bytes in IndexedDB. Rejects anything over 100MB outright
  * (IndexedDB + base-tab-memory isn't a great place for huge files); warns
- * but still proceeds between 25–100MB.
- *
- * Note: there's no reference-counting/garbage-collection here — deleting a
- * block that referenced a file doesn't delete the file. Tracking references
- * across arbitrary page content is a feature of its own, out of scope here.
+ * but still proceeds between 25–100MB. Deleting a block doesn't delete its
+ * file right away; deleteUnusedFiles cleans up later.
  */
 export async function storeFile(file: File): Promise<FileRecord> {
   if (file.size > REJECT_BYTES) {
@@ -53,6 +50,29 @@ export async function getFile(id: string): Promise<FileRecord | undefined> {
 
 export async function deleteFile(id: string): Promise<void> {
   await db.files.delete(id);
+}
+
+const FILE_REF = /xeento-file:\/\/([\w-]+)/g;
+// New files may not be referenced yet: an upload waits on the editor's
+// autosave debounce, an import stores files before writing its pages.
+const UNUSED_GRACE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Deletes stored files that no page references, counting pages in Trash
+ * (a restore must bring their files back). Skips files under a day old.
+ */
+export async function deleteUnusedFiles(): Promise<void> {
+  await db.transaction("rw", db.files, db.pages, db.trash, async () => {
+    const used = new Set<string>();
+    const collect = (content: unknown) => {
+      for (const match of JSON.stringify(content ?? null).matchAll(FILE_REF)) used.add(match[1]);
+    };
+    await db.pages.each((page) => collect(page.content));
+    await db.trash.each((entry) => entry.pages.forEach((page) => collect(page.content)));
+
+    const oldIds = await db.files.where("createdAt").below(Date.now() - UNUSED_GRACE_MS).primaryKeys();
+    await db.files.bulkDelete(oldIds.filter((id) => !used.has(id)));
+  });
 }
 
 export { formatBytes };

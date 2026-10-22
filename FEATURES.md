@@ -20,6 +20,7 @@ pointer.
 - A file over 25MB and one over 100MB (for ED-02)
 - Sample `.pdf`, `.mp4`, `.mp3` and one other file type (for ED-02)
 - A `.md` file with YAML front-matter (`title`, `tags`) (for IO-04)
+- DevTools → Application → IndexedDB → `xeento` (for DS-02, DS-03)
 
 ---
 
@@ -39,6 +40,7 @@ Run after any change. If something fails, run that area's full tests.
 8. Drop a `.pdf` onto the page → inline PDF viewer.
 9. Page "…" → Export → Markdown → a `.md` (or `.zip`) downloads.
 10. Toggle dark mode → whole app, including the editor, restyles.
+11. Delete a page, open Trash, restore it → it's back with its content.
 
 ---
 
@@ -48,7 +50,8 @@ Run after any change. If something fails, run that area's full tests.
 
 **Behavior:** Create, rename and delete pages. Pages nest to any depth.
 Drag a row to reorder siblings, or onto another page to nest it. Deleting
-a page also deletes all its sub-pages. The Pages section shows pages not
+a page moves it and all its sub-pages to Trash (DS-02), with no confirm
+and a "Moved to Trash" toast. The Pages section shows pages not
 in any folder. New page button sits in the sidebar header next to Search.
 
 **Test:**
@@ -56,7 +59,8 @@ in any folder. New page button sits in the sidebar header next to Search.
    sidebar and page view.
 2. Create a child page under it → appears nested under the parent.
 3. Drag pages up/down → reorders; drag right onto another page → nests.
-4. Delete a page that has children → the page and all descendants are gone.
+4. Delete a page that has children → the page and all descendants leave
+   the tree; Trash lists one entry for them.
 5. Reload → tree is identical.
 
 **Code:** `src/lib/pages.ts`, `src/components/sidebar/pages-tree.tsx`
@@ -89,7 +93,7 @@ truncate with an ellipsis.
 **Behavior:** Create with "+", rename by double-click, collapse (persists
 across reload), drag to reorder. Drag pages into and out of folders.
 Folders don't nest. Delete offers three choices: cancel, move pages to
-Pages, or delete pages too.
+Pages, or delete pages too (each page goes to Trash with its sub-pages).
 
 **Test:**
 1. Create a folder, drag a page into it → page appears inside.
@@ -98,7 +102,7 @@ Pages, or delete pages too.
 4. Drag a folder row by its name → folders reorder.
 5. Delete a folder, choose "move pages to Pages" → pages reappear in Pages.
 6. Delete another, choose "delete pages too" → folder and its pages
-   (including sub-pages) are gone.
+   (including sub-pages) are gone; Trash has one entry per page.
 
 **Code:** `src/lib/folders.ts`, `src/components/sidebar/folders-section.tsx`
 
@@ -132,7 +136,7 @@ and have no expand chevron.
 4. Hover a Recent row → star, "+" and trash appear; dragging does nothing.
 5. Double-click a Recent row's title and rename → Pages shows the new title.
 6. Click "+" on a Recent row → a sub-page is created under it and opens.
-7. Click trash on a Recent row → confirm dialog, then the page and its
+7. Click trash on a Recent row → "Moved to Trash" toast; the page and its
    sub-pages disappear from Recent and Pages.
 
 **Code:** `src/components/sidebar/recent-section.tsx`,
@@ -542,6 +546,105 @@ embeds. Bad input fails with a toast or skip reason, never a crash.
 
 ---
 
+## Data safety
+
+### DS-01 Persistent storage
+
+**Behavior:** On load, Xeento asks the browser to keep its storage
+persistent, so IndexedDB isn't evicted when disk space runs low. Chrome
+and Edge decide silently; Firefox may show a permission prompt. Nothing
+changes if the browser refuses.
+
+**Test:**
+1. Load the app, then run `await navigator.storage.persisted()` in the
+   console → `true` in Chrome once the site has some engagement (on a fresh
+   profile it may still be `false`; that's the browser's call).
+2. Firefox → a "store data in persistent storage" prompt; Allow → `true`.
+
+**Code:** `src/components/app-shell.tsx`
+
+### DS-02 Trash
+
+**Behavior:** Deleting a page (any sidebar section, or a folder's "delete
+pages too") moves it and its sub-pages to Trash as one entry. "Trash" at
+the bottom of the sidebar shows a count and opens a dialog listing entries
+newest first (icon, title, deleted date, sub-page count). **Restore** puts
+the page and sub-pages back at the end of their old siblings, keeping
+content, tags, icon and favourite. If the old parent page or folder no
+longer exists, it goes to the top level of Pages. **Delete forever** (per
+entry) and **Empty trash** ask for confirmation. Entries older than 30
+days are deleted on the next load.
+
+**Test:**
+1. Delete a page with sub-pages → "Moved to Trash" toast; sidebar footer
+   shows "Trash 1".
+2. Open Trash → one entry with the title, date and "N sub-pages".
+3. Restore → page and sub-pages back in the tree, last among their old
+   siblings, same content; Trash is empty.
+4. Delete a page inside a folder, delete the folder (move pages), restore
+   the page → it lands in Pages.
+5. Delete a starred page, restore it → it's back in Favourites.
+6. Delete forever → confirm → entry gone, page not restorable.
+7. Empty trash → confirm → Trash shows "Trash is empty."
+8. In DevTools, set an entry's `deletedAt` in the `trash` table to 31 days
+   ago, reload → entry gone.
+9. Esc or clicking outside closes the dialog.
+
+**Edge cases:** Restoring a sub-page whose parent is itself in Trash puts
+it at the top level of Pages.
+
+**Code:** `src/lib/trash.ts`, `src/components/sidebar/trash-dialog.tsx`
+
+### DS-03 Unused file cleanup
+
+**Behavior:** On load (after the Trash purge) and after any Delete forever
+or Empty trash, stored files that no page references are deleted. Pages in
+Trash count as references, so restoring brings their files back. Files
+stored less than 24 hours ago are kept, so a fresh upload or import isn't
+removed before its page saves.
+
+**Test:**
+1. Drop an image on a page, delete the image block. In DevTools set that
+   file's `createdAt` to 2 days ago, reload → the file is gone from `files`.
+2. Repeat, but delete the whole page instead of the block (it's in Trash),
+   reload → file kept; restore → image displays.
+3. Then delete it forever → file is gone from `files`.
+4. Upload a file, delete its block, reload right away → file kept (under
+   24h old).
+
+**Code:** `src/lib/files.ts` (`deleteUnusedFiles`)
+
+### DS-04 Full backup and restore
+
+**Behavior:** Settings → "Download full backup" downloads
+`xeento-backup-<date>.zip`: `backup.json` (every page, folder and Trash
+entry exactly as stored) plus `files/<id>` for each stored file. Settings →
+"Restore from backup…" asks for confirmation, then **replaces** the whole
+workspace (pages, folders, files, Trash) with the backup and reloads.
+Nothing is lost, unlike Markdown export (IO-03). A zip that isn't a Xeento
+backup shows an error toast and changes nothing. The zip is built in memory
+before the download starts, so clicking shows "Preparing backup (<size>)…"
+at once. If the download hasn't started after 30 seconds, a warning says
+the workspace may be too large; if building fails, an error toast says so.
+
+**Test:**
+1. Build pages with sub-pages, a folder, favourites, tags, an image, a PDF
+   and a Trash entry. Download full backup → zip has `backup.json` and
+   `files/`.
+2. Change things (delete pages, rename a folder), restore the backup →
+   confirm → app reloads to exactly the backed-up state, media included,
+   Trash entry included.
+3. Cancel the confirm → nothing changes.
+4. Restore a Notion export zip or a random zip → "isn't a valid Xeento
+   backup" toast; workspace unchanged.
+5. Click Download full backup → "Preparing backup (<size>)…" toast at once.
+6. With a large workspace (or `SLOW_BACKUP_MS` lowered temporarily) → the
+   "still hasn't started… may be too large" warning appears.
+
+**Code:** `src/lib/backup.ts`, `src/components/settings-menu.tsx`
+
+---
+
 ## Settings and theme
 
 ### ST-01 Light/dark mode
@@ -576,7 +679,11 @@ including the editor and code highlighting.
 ## Known limitations
 
 - Single browser only: data lives in IndexedDB, no sync yet.
-- Deleting a block doesn't delete its stored file (no file cleanup).
+- A deleted block's file stays stored until the next cleanup (DS-03): at
+  least 24 hours, then the next load.
+- Restore from backup replaces the workspace; it can't merge.
+- Backup and restore hold the whole workspace in memory, so very large
+  workspaces may be slow.
 - Very large PDFs may be slow (pages load lazily but aren't virtualized).
 - Markdown round-trip is lossy for media blocks (expected; Markdown has no
   syntax for them).
@@ -615,3 +722,9 @@ round-trip.
 - ED-06: convert selection to code block
 - PG-04, SB-07: sticky toolbar, fixed open-sidebar button
 - ED-08: paste URL menu (Mention / Bookmark / Embed / URL)
+
+**Milestone 4 — Data safety:** DS-01 persistent storage, DS-02 Trash
+(SB-01, SB-03, SB-05 delete now goes to Trash), DS-03 unused file
+cleanup, DS-04 full backup and restore.
+- DS-04: backup progress toast and slow/failed-backup warnings
+- Toasts render again (`ToastHost` was never mounted, so no toast showed)

@@ -39,7 +39,7 @@ export const toast = {
 const KIND_STYLES: Record<ToastKind, string> = {
   info: "border-border bg-popover text-foreground",
   warn: "border-amber-400/40 bg-amber-400/10 text-amber-700 dark:text-amber-300",
-  error: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400",
+  error: "border-red-500/40 bg-red-500/75 text-red-200 dark:text-red-200",
 };
 
 const KIND_ICON = {

@@ -28,7 +28,7 @@ export async function getPage(id: string): Promise<PageRecord | undefined> {
   return db.pages.get(id);
 }
 
-async function nextOrder(parentId: string, folderId: string | null = null): Promise<number> {
+export async function nextOrder(parentId: string, folderId: string | null = null): Promise<number> {
   const siblings = await getChildren(parentId, folderId);
   if (siblings.length === 0) return ORDER_STEP;
   return siblings[siblings.length - 1].order + ORDER_STEP;
@@ -112,11 +112,6 @@ export async function getDescendantIds(id: string): Promise<string[]> {
     }
   }
   return result;
-}
-
-export async function deletePage(id: string) {
-  const descendants = await getDescendantIds(id);
-  await db.pages.bulkDelete([id, ...descendants]);
 }
 
 export async function isSameOrDescendant(

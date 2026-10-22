@@ -11,11 +11,12 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { PanelLeftClose, Plus, Search } from "lucide-react";
+import { PanelLeftClose, Plus, Search, Trash2 } from "lucide-react";
 import { isAfter, isNestGesture } from "@/lib/dnd-utils";
 import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/db";
 import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";
 import { useLocalStorageNumber } from "@/lib/use-local-storage-number";
+import { useTrash } from "@/lib/use-trash";
 import { createFolder, reorderFolders } from "@/lib/folders";
 import { movePageToPosition } from "@/lib/pages";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -28,6 +29,7 @@ import { FavouritesSection } from "./favourites-section";
 import { RecentSection } from "./recent-section";
 import { FoldersSection } from "./folders-section";
 import { PagesSection } from "./pages-section";
+import { TrashDialog } from "./trash-dialog";
 
 const DEFAULT_SIDEBAR_WIDTH = 256;
 const MIN_SIDEBAR_WIDTH = 220;
@@ -93,6 +95,9 @@ export function Sidebar({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const { progress: importProgress, summary: importSummary, run: runImport, close: closeImportDialog } = useImportFlow();
+
+  const trashCount = useTrash()?.length ?? 0;
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const [width, setWidth] = useLocalStorageNumber("xeento:sidebar-width", DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
@@ -365,6 +370,18 @@ export function Sidebar({
             </DragOverlay>
           </DndContext>
         </div>
+
+        <div className="border-t border-border px-2 py-2">
+          <button
+            type="button"
+            onClick={() => setTrashOpen(true)}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+          >
+            <Trash2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1">Trash</span>
+            {trashCount > 0 && <span className="text-xs">{trashCount}</span>}
+          </button>
+        </div>
       </div>
 
       {open && (
@@ -375,6 +392,8 @@ export function Sidebar({
         />
       )}
     </aside>
+
+    {trashOpen && <TrashDialog onClose={() => setTrashOpen(false)} />}
 
     {importProgress && (
       <ImportProgressDialog

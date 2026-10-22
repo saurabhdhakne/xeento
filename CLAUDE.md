@@ -128,7 +128,7 @@ pdf.js worker into `public/`. Re-run it if the worker goes missing.
 
 ## Data model
 
-`src/lib/db.ts`, Dexie **version 3** (v1 and v2 kept for migration).
+`src/lib/db.ts`, Dexie **version 4** (v1–v3 kept for migration).
 
 ```ts
 interface PageRecord {
@@ -153,6 +153,11 @@ interface PageRecord {
 interface FolderRecord { id: string; name: string; order: number; collapsed: boolean; }
 
 interface FileRecord { id: string; name: string; mimeType: string; size: number; blob: Blob; createdAt: number; }
+
+interface TrashRecord { id: string; deletedAt: number; pages: PageRecord[]; }
+// id = the deleted top page's id; pages = that page first, then its
+// descendants, exactly as they were. Deleted pages leave the `pages`
+// table, so no other query needs to filter them out.
 ```
 
 - A page's children are pages whose `parentId` points at it. No tree table.
@@ -175,11 +180,21 @@ before changing it.
 - `pages.ts`: page CRUD. `movePageToPosition` handles reorder, re-parent and
   folder moves, and enforces the nested-`folderId: null` invariant. Also
   `toggleFavourite`, `reorderFavourites`, `touchLastOpened`, `setPageTags`,
-  `duplicatePage(id, afterId = id)`.
+  `duplicatePage(id, afterId = id)`. Pages are never hard-deleted here.
+- `trash.ts` (+ `use-trash.ts`): `trashPage`, `restoreFromTrash` (falls
+  back to Pages root if the parent page/folder is gone), `deleteFromTrash`,
+  `emptyTrash`, `purgeExpiredTrash` (30 days, run on load from
+  `app-shell.tsx`).
 - `folders.ts`: `deleteFolder` either re-homes pages one at a time through
-  `movePageToPosition` (avoids order collisions) or deletes them with
-  descendants.
+  `movePageToPosition` (avoids order collisions) or trashes each page.
 - `files.ts`: `storeFile` (warn >25MB, reject >100MB, via `ui/toast.tsx`).
+  `deleteUnusedFiles` scans `pages` and `trash` content for
+  `xeento-file://` refs; files under 24h old are always kept (uploads wait
+  on the autosave debounce, imports store files before pages).
+- `backup.ts`: lossless zip (`backup.json` + `files/<id>`); restore
+  replaces every table. **Gotcha:** a Dexie transaction commits as soon as
+  it awaits non-IndexedDB work (jszip, fetch), so read everything first,
+  then open the transaction.
 - `build-page-tree.ts`: filters **only the top level** by folder. Don't
   pre-filter the whole array by `folderId`; nested descendants (always
   `folderId: null`) would vanish.
@@ -198,6 +213,7 @@ before changing it.
   kinds use `data.type`; ids are always real nanoids, never prefixed.
 - `sidebar/page-tree-row.tsx`: drag-agnostic row (takes drag props), reused
   by Pages, Folders, Favourites (`useSortable`) and Recent (no drag).
+- `sidebar/trash-dialog.tsx`: Trash list, opened from the sidebar footer.
 - `ui/popover.tsx`, `ui/context-menu.tsx`: portaled to `document.body` and
   viewport-clamped, because the sidebar `<aside>` is `overflow-hidden`.
 - `page-view.tsx`: title (`TitleField`), icon, sticky toolbar (star + "…"
@@ -257,7 +273,6 @@ BlockNote theme overrides, code-block CSS and `@media print` rules.
 ## Known gaps
 
 Flagged on purpose. Don't fix these unless asked.
-- No garbage collection for unreferenced files in the `files` table.
 - PDF viewer is lazy but not virtualized; slow on huge PDFs.
 - Import link rewriting is regex-based, not a Markdown AST walk.
 
@@ -266,7 +281,7 @@ Flagged on purpose. Don't fix these unless asked.
 The roadmap, roughly in priority order: Supabase sync; offline write queue
 + conflict resolution; database/table blocks with board/calendar views (CSV
 imports are plain tables with a TODO note); richer HTML paste; real-time
-collaboration; file GC. Build history is in FEATURES.md's Changelog.
+collaboration. Build history is in FEATURES.md's Changelog.
 
 ---
 

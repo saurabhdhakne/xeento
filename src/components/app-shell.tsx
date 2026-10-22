@@ -12,7 +12,6 @@ import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";
 import { setFolderCollapsed } from "@/lib/folders";
 import {
   createPage,
-  deletePage,
   duplicatePage,
   getDescendantIds,
   renamePage,
@@ -20,6 +19,8 @@ import {
   toggleFavourite,
   touchLastOpened,
 } from "@/lib/pages";
+import { purgeExpiredTrash, trashPage } from "@/lib/trash";
+import { deleteUnusedFiles } from "@/lib/files";
 import { toast } from "@/components/ui/toast";
 import { PanelLeftOpen } from "lucide-react";
 
@@ -77,6 +78,14 @@ export function AppShell() {
     );
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [loading, allPages]);
+
+  // Once per load: ask the browser not to evict our IndexedDB data when
+  // disk runs low, drop Trash entries past 30 days, then delete stored
+  // files that nothing references any more.
+  useEffect(() => {
+    void navigator.storage?.persist?.();
+    void purgeExpiredTrash().then(deleteUnusedFiles);
+  }, []);
 
   useEffect(() => {
     if (selectedId) {
@@ -222,14 +231,10 @@ export function AppShell() {
 
   async function handleDelete(id: string) {
     const target = pagesById.get(id);
-    const confirmed = window.confirm(
-      "Delete this page and all of its sub-pages? This can't be undone.",
-    );
-    if (!confirmed) return;
-
     const descendants = await getDescendantIds(id);
     const deletedIds = new Set([id, ...descendants]);
-    await deletePage(id);
+    await trashPage(id);
+    toast.info("Moved to Trash");
 
     if (selectedId && deletedIds.has(selectedId)) {
       const fallback = target && target.parentId !== ROOT_ID ? target.parentId : null;

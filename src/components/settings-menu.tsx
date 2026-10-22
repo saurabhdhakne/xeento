@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef } from "react";
-import { FolderDown, Settings as SettingsIcon, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, FolderDown, Settings as SettingsIcon, Upload } from "lucide-react";
 import { Popover } from "./ui/popover";
 import { toast } from "./ui/toast";
 import { importMarkdownFiles } from "@/lib/import/markdown-import";
 import { importNotionExport } from "@/lib/import/notion-import";
 import { exportWorkspaceAsZip } from "@/lib/export/markdown-export";
+import { downloadBackup, restoreBackup } from "@/lib/backup";
 import { useImportFlow } from "@/lib/import/use-import-flow";
 import { ImportProgressDialog } from "./import/import-progress-dialog";
 
@@ -14,6 +15,7 @@ export function SettingsMenu() {
   const { progress, summary, run, close: closeImportDialog } = useImportFlow();
   const markdownInputRef = useRef<HTMLInputElement>(null);
   const notionInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <>
@@ -69,6 +71,28 @@ export function SettingsMenu() {
               <FolderDown className="h-3.5 w-3.5" />
               Export entire workspace
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                void downloadBackup().catch(() => toast.error("Couldn't create the backup. The workspace may be too large to back up in one file."));
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/8"
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Download full backup
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                backupInputRef.current?.click();
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/8"
+            >
+              <ArchiveRestore className="h-3.5 w-3.5" />
+              Restore from backup…
+            </button>
           </div>
         )}
       </Popover>
@@ -94,6 +118,24 @@ export function SettingsMenu() {
           const file = e.target.files?.[0];
           if (file) void run((onProgress) => importNotionExport(file, onProgress));
           e.target.value = "";
+        }}
+      />
+      <input
+        ref={backupInputRef}
+        type="file"
+        accept=".zip"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          const confirmed = window.confirm(
+            "Restoring replaces everything in this workspace (pages, folders, files and Trash) with the backup. Continue?",
+          );
+          if (!confirmed) return;
+          void restoreBackup(file)
+            .then(() => window.location.reload())
+            .catch(() => toast.error("Couldn't restore: this isn't a valid Xeento backup."));
         }}
       />
 

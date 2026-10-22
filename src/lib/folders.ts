@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { db, ROOT_ID, type FolderRecord } from "./db";
-import { getChildren, getDescendantIds, movePageToPosition } from "./pages";
+import { getChildren, movePageToPosition } from "./pages";
+import { trashPage } from "./trash";
 
 const ORDER_STEP = 1024;
 
@@ -39,21 +40,15 @@ export async function reorderFolders(orderedIds: string[]) {
  * previous one) rather than a bare `folderId: null` flip — a flip would
  * collide with order values already in use in that bucket, since each
  * (parentId, folderId) combination keeps its own independent order
- * sequence starting at ORDER_STEP.
+ * sequence starting at ORDER_STEP. In "deleteContents" mode each direct
+ * page (with its sub-pages) goes to Trash as its own entry.
  */
 export async function deleteFolder(id: string, mode: "moveToRoot" | "deleteContents") {
-  await db.transaction("rw", db.pages, db.folders, async () => {
+  await db.transaction("rw", db.pages, db.folders, db.trash, async () => {
     const directPages = await getChildren(ROOT_ID, id);
 
     if (mode === "deleteContents") {
-      const allIds = new Set<string>();
-      for (const page of directPages) {
-        allIds.add(page.id);
-        for (const descendantId of await getDescendantIds(page.id)) {
-          allIds.add(descendantId);
-        }
-      }
-      await db.pages.bulkDelete([...allIds]);
+      for (const page of directPages) await trashPage(page.id);
     } else {
       const rootSiblingCountBefore = (await getChildren(ROOT_ID, null)).length;
       for (let i = 0; i < directPages.length; i++) {
