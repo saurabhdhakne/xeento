@@ -1,0 +1,216 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #1f1e1c;
+  --sidebar: #f7f6f3;
+  --border: #e8e6e1;
+  --muted: #86837a;
+  --popover: #ffffff;
+  --accent: #5b4fe0;
+  --accent-foreground: #ffffff;
+  --accent-soft: #edebfc;
+  --ring: #5b4fe0;
+}
+
+.dark {
+  --background: #121212;
+  --foreground: #ecebe8;
+  --sidebar: #181818;
+  --border: #2a2a2a;
+  --muted: #8f8c85;
+  --popover: #1c1c1c;
+  --accent: #8b7fff;
+  --accent-foreground: #121212;
+  --accent-soft: rgba(139, 127, 255, 0.16);
+  --ring: #8b7fff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-popover: var(--popover);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  border-color: var(--border);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* BlockNote theme overrides so the editor matches Xeento's palette */
+.bn-container {
+  --bn-colors-editor-text: var(--foreground);
+  --bn-colors-editor-background: var(--background);
+  --bn-colors-menu-text: var(--foreground);
+  --bn-colors-menu-background: var(--popover);
+  --bn-colors-hovered-background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  --bn-colors-selected-background: var(--accent-soft);
+  --bn-colors-disabled-background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --bn-colors-shadow: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --bn-colors-border: var(--border);
+  --bn-colors-side-menu: var(--muted);
+  --bn-colors-highlights-gray-text: var(--muted);
+  --bn-font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.bn-editor {
+  padding-inline: 0 !important;
+  background: transparent !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Custom code block: toolbar (copy / line numbers) + optional gutter */
+.xeento-code-block {
+  position: relative;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.xeento-code-toolbar {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.5rem;
+  z-index: 1;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.xeento-code-block:hover .xeento-code-toolbar {
+  opacity: 1;
+}
+
+.xeento-code-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.5rem;
+  width: 1.5rem;
+  border-radius: 0.25rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--background) 70%, transparent);
+}
+
+.xeento-code-toolbar button:hover,
+.xeento-code-toolbar button.active {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.xeento-code-row {
+  display: flex;
+}
+
+.xeento-code-gutter {
+  flex-shrink: 0;
+  padding: 0.75rem 0.5rem 0.75rem 0.75rem;
+  text-align: right;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  user-select: none;
+}
+
+.xeento-code-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.xeento-code-content pre {
+  margin: 0 !important;
+  line-height: 1.6 !important;
+}
+
+/* PDF export: PageView mounts a hidden print:block subtree (PrintableDocument)
+   with its own read-only render of the page(s); everything else — sidebar,
+   the live editable view, interactive block chrome — is hidden for print. */
+/* Link mention chip (pasted URL → "Mention"): favicon + page title, inline with text. */
+.xeento-link-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  max-width: 100%;
+  padding: 0 0.3em;
+  border-radius: 4px;
+  color: var(--foreground);
+  font-weight: 500;
+  text-decoration: none;
+  vertical-align: bottom;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.xeento-link-mention:hover {
+  background: var(--accent-soft);
+}
+.xeento-link-mention > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media print {
+  aside {
+    display: none !important;
+  }
+
+  main {
+    overflow: visible !important;
+  }
+
+  body {
+    background: #ffffff;
+    color: #1f1e1c;
+  }
+
+  .xeento-code-toolbar,
+  .xeento-code-gutter {
+    display: none !important;
+  }
+
+  .xeento-code-content pre,
+  img,
+  .bn-container [data-content-type="pdf"],
+  .bn-container [data-content-type="file"] {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 1in 0.75in;
+  }
+}

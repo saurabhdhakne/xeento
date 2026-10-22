@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs cat)",
+      "Bash(curl -s -o /tmp/xeento-m2-home.html -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Read(//tmp/**)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(node -e \"const icons = require\\('lucide-react'\\); console.log\\(['ImagePlus','UploadCloud','ImageDown'].map\\(n => n + ': ' + \\(n in icons\\)\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(grep -n \"</aside>\\\\|</div>$\" src/components/sidebar/sidebar.tsx)",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(Object.keys\\(require\\('@blocknote/core'\\)\\).filter\\(k => k.toLowerCase\\(\\).includes\\('default'\\) || k.toLowerCase\\(\\).includes\\('block'\\)\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(npm install *)",
+      "Bash(npm view *)",
+      "Bash(node -e \"const icons = require\\('lucide-react'\\); console.log\\(Object.keys\\(icons\\).filter\\(k => /youtube/i.test\\(k\\)\\)\\)\")",
+      "Bash(node scripts/generate-notion-fixture.mjs)",
+      "Bash(unzip -l test-fixtures/notion-export-sample.zip)",
+      "Read(//private/tmp/**)",
+      "Bash(xargs ls)"
+    ]
+  }
+}

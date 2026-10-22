@@ -1,0 +1,58 @@
+import type { LinkPreviewResponse } from "@/app/api/link-preview/route";
+
+export type LinkPreview = LinkPreviewResponse;
+
+// One request per URL per session — the paste menu prefetches as soon as a
+// URL is pasted, so by the time Mention/Bookmark is picked it's usually ready.
+const cache = new Map<string, Promise<LinkPreview>>();
+
+/** Title/description/og:image/favicon for a URL, via the server-side `/api/link-preview` route. Never rejects. */
+export function fetchLinkPreview(url: string): Promise<LinkPreview> {
+  let pending = cache.get(url);
+  if (!pending) {
+    pending = fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
+      .then((res) => res.json())
+      .then((data: Partial<LinkPreview>) => ({ ...fallbackLinkPreview(url), ...stripEmpty(data) }))
+      .catch(() => fallbackLinkPreview(url));
+    cache.set(url, pending);
+  }
+  return pending;
+}
+
+export function fallbackLinkPreview(url: string): LinkPreview {
+  let host = url;
+  let origin = "";
+  try {
+    const parsed = new URL(url);
+    host = parsed.hostname.replace(/^www\./, "");
+    origin = parsed.origin;
+  } catch {
+    // keep the raw string as the title
+  }
+  return {
+    url,
+    title: host,
+    description: "",
+    image: "",
+    favicon: origin ? `${origin}/favicon.ico` : "",
+    siteName: host,
+  };
+}
+
+function stripEmpty(data: Partial<LinkPreview>): Partial<LinkPreview> {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => typeof value === "string" && value !== ""),
+  );
+}
+
+/** True when the pasted text is exactly one http(s) URL (no surrounding prose). */
+export function parsePastedUrl(text: string | undefined): string | null {
+  const trimmed = text?.trim();
+  if (!trimmed || /\s/.test(trimmed)) return null;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
