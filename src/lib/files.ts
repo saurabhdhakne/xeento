@@ -1,5 +1,7 @@
 import { nanoid } from "nanoid";
 import { getDb } from "./db";
+import { activeAccountUid } from "./sync-settings";
+import { hasPulledThisSession } from "./sync/status";
 import type { FileRecord } from "./records";
 import { toast } from "@/components/ui/toast";
 
@@ -67,6 +69,9 @@ const UNUSED_GRACE_MS = 24 * 60 * 60 * 1000;
  */
 export async function deleteUnusedFiles(): Promise<void> {
   const db = getDb();
+  // Sync mode: only once this device has everything and has sent everything,
+  // so a file another device still references isn't deleted.
+  if (activeAccountUid() && (!hasPulledThisSession() || (await db.outbox.count()) > 0)) return;
   await db.transaction("rw", db.files, db.pages, db.trash, async () => {
     const used = new Set<string>();
     const collect = (content: unknown) => {

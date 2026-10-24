@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PartialBlock } from "@blocknote/core";
 import { Star } from "lucide-react";
 import { IconPicker } from "@/components/icon-picker";
 import { BlockEditor } from "@/components/editor/block-editor";
@@ -92,11 +91,7 @@ export function PageView({ pageId, onMoveTo }: { pageId: string; onMoveTo: () =>
         </div>
 
         <div className="mt-6">
-          <BlockEditor
-            key={pageId}
-            pageId={pageId}
-            initialContent={(page.content as PartialBlock[]) ?? []}
-          />
+          <BlockEditor key={pageId} pageId={pageId} />
         </div>
 
         <Backlinks pageId={pageId} />

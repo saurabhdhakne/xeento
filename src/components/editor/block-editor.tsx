@@ -13,14 +13,13 @@ import {
 import { BlockNoteView } from "@blocknote/mantine";
 import { syntaxHighlighter } from "@blocknote/code-block";
 import { useTheme } from "next-themes";
-import {
-  filterSuggestionItems,
-  insertOrUpdateBlockForSlashMenu,
-  type PartialBlock,
-} from "@blocknote/core";
+import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core";
+import { withCollaboration } from "@blocknote/core/yjs";
 import type { SuggestionMenuOptions } from "@blocknote/core/extensions";
 import { Bookmark, Code, FilePlus, FileText, Video } from "lucide-react";
-import { createPage, getAllPages, setPageContent } from "@/lib/pages";
+import { createPage, getAllPages } from "@/lib/pages";
+import { openPageDoc, type PageDocSession } from "@/lib/page-doc";
+import { usePageUpdateCount } from "@/lib/use-pages";
 import { uploadFileToFileStore } from "@/lib/upload-file";
 import { createFileUrlResolver } from "@/lib/use-files";
 import { blockTypeForFile } from "@/lib/block-type-for-file";
@@ -139,56 +138,82 @@ function getBlockTypeSelectItems(editor: XeentoEditor) {
   ];
 }
 
-interface BlockEditorProps {
-  pageId: string;
-  initialContent: PartialBlock[];
+/** The page's editor, shown once its Yjs document has loaded from IndexedDB. */
+export function BlockEditor({ pageId }: { pageId: string }) {
+  const [opened, setOpened] = useState<{ session: PageDocSession | null } | null>(null);
+  // In Sync mode a page can arrive before its content; open again when it does.
+  const hasRows = (usePageUpdateCount(pageId) ?? 0) > 0;
+  const waiting = opened !== null && opened.session === null;
+
+  useEffect(() => {
+    if (opened?.session) return;
+    let cancelled = false;
+    void openPageDoc(pageId).then((session) => {
+      if (!cancelled) setOpened({ session });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reopen only when rows appear
+  }, [pageId, waiting && hasRows]);
+
+  if (opened?.session) return <LoadedBlockEditor pageId={pageId} session={opened.session} />;
+  if (waiting) return <p className="text-sm text-muted">This page&apos;s content is still syncing…</p>;
+  return null;
 }
 
-export function BlockEditor({ pageId, initialContent }: BlockEditorProps) {
+function LoadedBlockEditor({ pageId, session }: { pageId: string; session: PageDocSession }) {
   const { resolvedTheme } = useTheme();
   // Lazy-initialized once and referentially stable for this component's
   // lifetime (a plain value, not a ref — safe to read during render).
   const [fileResolver] = useState(() => createFileUrlResolver());
   const [pastedUrl, setPastedUrl] = useState<PastedUrl | null>(null);
   const closePasteMenu = useCallback(() => setPastedUrl(null), []);
-  const editor = useCreateBlockNote({
-    schema: xeentoSchema,
-    initialContent: initialContent.length > 0 ? initialContent : undefined,
-    // Without uploadFile, BlockNote disables file uploads entirely (every
-    // file-type block falls back to URL-embed only). resolveFileUrl is
-    // what turns a stored `xeento-file://<id>` reference back into
-    // something the browser can actually display/download — used
-    // internally by every file-type block's render *and* its toolbar's
-    // download button, not just the ones we render ourselves.
-    uploadFile: uploadFileToFileStore,
-    resolveFileUrl: fileResolver.resolve,
-    extensions: [syntaxHighlighter],
-    // A bare URL pasted into text becomes a clickable link straight away,
-    // then the "paste as" menu offers Mention / Bookmark / Embed instead.
-    // Anything else (and URLs pasted over a selection, which BlockNote
-    // turns into a link on the selected text) uses the default handling.
-    pasteHandler: ({ event, editor, defaultPasteHandler }) => {
-      const url = parsePastedUrl(event.clipboardData?.getData("text/plain"));
-      const { selection } = editor.prosemirrorState;
-      const block = editor.getTextCursorPosition().block;
-      if (!url || !selection.empty || block.type === "codeBlock" || !Array.isArray(block.content)) {
-        return defaultPasteHandler();
-      }
-      const from = selection.from;
-      editor.insertInlineContent([{ type: "link", href: url, content: url }], { updateSelection: true });
-      const to = editor.prosemirrorState.selection.from;
-      if (linkPreviewsEnabled()) void fetchLinkPreview(url);
-      setPastedUrl({ url, from, to, blockId: block.id });
-      return true;
-    },
-  });
+  const editor = useCreateBlockNote(
+    // Content comes from the page's Yjs document (page-doc.ts), not
+    // initialContent. There's no provider: edits are only saved locally.
+    withCollaboration({
+      collaboration: { fragment: session.fragment, user: { name: "", color: "#5b4fe0" } },
+      schema: xeentoSchema,
+      // Without uploadFile, BlockNote disables file uploads entirely (every
+      // file-type block falls back to URL-embed only). resolveFileUrl is
+      // what turns a stored `xeento-file://<id>` reference back into
+      // something the browser can actually display/download — used
+      // internally by every file-type block's render *and* its toolbar's
+      // download button, not just the ones we render ourselves.
+      uploadFile: uploadFileToFileStore,
+      resolveFileUrl: fileResolver.resolve,
+      extensions: [syntaxHighlighter],
+      // A bare URL pasted into text becomes a clickable link straight away,
+      // then the "paste as" menu offers Mention / Bookmark / Embed instead.
+      // Anything else (and URLs pasted over a selection, which BlockNote
+      // turns into a link on the selected text) uses the default handling.
+      pasteHandler: ({ event, editor, defaultPasteHandler }) => {
+        const url = parsePastedUrl(event.clipboardData?.getData("text/plain"));
+        const { selection } = editor.prosemirrorState;
+        const block = editor.getTextCursorPosition().block;
+        if (!url || !selection.empty || block.type === "codeBlock" || !Array.isArray(block.content)) {
+          return defaultPasteHandler();
+        }
+        const from = selection.from;
+        editor.insertInlineContent([{ type: "link", href: url, content: url }], { updateSelection: true });
+        const to = editor.prosemirrorState.selection.from;
+        if (linkPreviewsEnabled()) void fetchLinkPreview(url);
+        setPastedUrl({ url, from, to, blockId: block.id });
+        return true;
+      },
+    }),
+  );
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Edits pulled from other devices show up live in this editor.
+  useEffect(() => session.attach(), [session]);
 
   useEffect(() => {
     return () => {
       if (saveTimeout.current) {
         clearTimeout(saveTimeout.current);
-        void setPageContent(pageId, editor.document);
+        void session.save(editor.document);
       }
       // This editor instance is remounted via `key={pageId}` whenever the
       // selected page changes, so this is "revoke on unmount" scoped to
@@ -201,7 +226,7 @@ export function BlockEditor({ pageId, initialContent }: BlockEditorProps) {
   function handleChange() {
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(() => {
-      void setPageContent(pageId, editor.document);
+      void session.save(editor.document);
     }, 400);
   }
 

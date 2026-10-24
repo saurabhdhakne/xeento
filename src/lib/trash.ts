@@ -1,6 +1,7 @@
 import { getDb } from "./db";
 import { ROOT_ID } from "./records";
 import { deleteUnusedFiles } from "./files";
+import { deletePageDocs } from "./page-doc";
 import { getDescendantIds, nextOrder } from "./pages";
 
 const TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -46,20 +47,36 @@ export async function restoreFromTrash(id: string) {
   });
 }
 
+// Trash keeps its pages' Yjs state (restore needs it); deleting an entry
+// for good deletes that state too.
+
 export async function deleteFromTrash(id: string) {
   const db = getDb();
-  await db.trash.delete(id);
+  await db.transaction("rw", db.trash, db.pageUpdates, async () => {
+    const entry = await db.trash.get(id);
+    await db.trash.delete(id);
+    if (entry) await deletePageDocs(entry.pages.map((p) => p.id));
+  });
   await deleteUnusedFiles();
 }
 
 export async function emptyTrash() {
   const db = getDb();
-  await db.trash.clear();
+  await db.transaction("rw", db.trash, db.pageUpdates, async () => {
+    const entries = await db.trash.toArray();
+    await db.trash.clear();
+    await deletePageDocs(entries.flatMap((e) => e.pages.map((p) => p.id)));
+  });
   await deleteUnusedFiles();
 }
 
 /** Permanently deletes Trash entries older than 30 days. */
 export async function purgeExpiredTrash() {
   const db = getDb();
-  await db.trash.where("deletedAt").below(Date.now() - TRASH_TTL_MS).delete();
+  await db.transaction("rw", db.trash, db.pageUpdates, async () => {
+    const expired = db.trash.where("deletedAt").below(Date.now() - TRASH_TTL_MS);
+    const entries = await expired.toArray();
+    await expired.delete();
+    await deletePageDocs(entries.flatMap((e) => e.pages.map((p) => p.id)));
+  });
 }

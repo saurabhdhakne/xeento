@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
         loaders: ["@tailwindcss/turbopack"],
         as: "*.css",
       },
+      // firebase/firestore.rules, shown and copied by the sync setup.
+      "*.rules": { type: "text" },
     },
   },
 };

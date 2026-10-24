@@ -74,8 +74,8 @@ something (e.g. it needs a manual browser check), say exactly what is
 unverified. Don't add a test framework without asking. One exception is
 approved: Firestore rules tests (Firebase emulator via `firebase-tools`,
 MIT, plus `@firebase/rules-unit-testing`, Apache-2.0, dev dependencies
-only), added in ROADMAP.md Phase 4 as `npm run test:rules`. Not installed
-yet; Phase 4 adds the command to Commands below.
+only), `npm run test:rules` (see Commands). They use Node's built-in
+`node:test`, not a test framework.
 
 ### Project rules (ask before breaking any of these)
 
@@ -121,6 +121,13 @@ come before implementation rather than after mistakes.
 - **papaparse** (MIT): CSV parsing (Notion database → table block)
 - **Dexie** + `dexie-react-hooks`: IndexedDB storage, the local store in
   every mode
+- **firebase** (Apache-2.0): Sync mode's Auth + Firestore, client-side
+  only. Dev: **firebase-tools** (MIT, emulators) and
+  **@firebase/rules-unit-testing** (Apache-2.0)
+- **yjs** (MIT) + **y-prosemirror** (MIT) + **y-protocols** (MIT, peer of
+  y-prosemirror): page content as Yjs documents, via BlockNote's
+  `@blocknote/core/yjs` (`withCollaboration`, `blocksToYDoc`). Keep a
+  single `yjs` copy in `npm ls yjs`; two copies break Yjs
 - **@dnd-kit/core** (page/folder tree), **@dnd-kit/sortable** (Favourites)
 - **emoji-picker-react**, **next-themes** (class-based dark mode; custom
   `dark` variant in `globals.css`), **lucide-react**, **nanoid** (all ids)
@@ -138,8 +145,9 @@ pdf.js worker into `public/`. Re-run it if the worker goes missing.
 ## Data model
 
 Types and `ROOT_ID` live in `src/lib/records.ts` (no Dexie import). The
-schema is in `src/lib/db.ts`, Dexie **version 4** (v1–v3 kept for
-migration).
+schema is in `src/lib/db.ts`, Dexie **version 6** (v1–v5 kept for
+migration). Local mode uses the database `xeento`; each Sync account its
+own `xeento-<uid>`, same schema.
 
 ```ts
 interface PageRecord {
@@ -169,7 +177,23 @@ interface TrashRecord { id: string; deletedAt: number; pages: PageRecord[]; }
 // id = the deleted top page's id; pages = that page first, then its
 // descendants, exactly as they were. Deleted pages leave the `pages`
 // table, so no other query needs to filter them out.
+
+interface PageUpdateRecord { id: string; pageId: string; update: Uint8Array; createdAt: number; }
+// Yjs updates for a page's content (v5). A page's rows merge into its
+// document; they outlive the page while it's in Trash.
+
+interface OutboxRecord { key: string; table: string; id: string; queuedAt: number; }
+// v6, Sync mode only: one pending change per record (`${table}:${id}`, so
+// edits coalesce). Push reads the record's current state; missing = deleted.
+interface SyncStateRecord { key: string; value: unknown; }
+// v6, device-only: "cursor" (opaque pull position), "deviceId".
 ```
+
+- **Page content is a Yjs document** (`pageUpdates` rows). `content` is a
+  JSON snapshot of it, refreshed on every editor save, and is what search,
+  backlinks, export, print, Trash and file cleanup read. A page with no
+  rows is defined by its `content`; `page-doc.ts` builds its Yjs state
+  from that when first needed (migration, older backups, new pages).
 
 - A page's children are pages whose `parentId` points at it. No tree table.
 - Folders don't nest. Folder membership is root-level only.
@@ -191,17 +215,68 @@ Where things live, plus the non-obvious decisions. Read the relevant file
 before changing it.
 
 **Data layer (`src/lib/`)**
+- `page-doc.ts`: all Yjs code. `openPageDoc(pageId)` loads and merges a
+  page's rows (creating them from `content` if none; compacting >20 rows
+  into one) and returns `{ fragment, save(content) }`. `save` writes the
+  merged pending updates plus the `content` snapshot in one transaction
+  and is a no-op without Yjs changes, so opening a page never bumps
+  `updatedAt`. `pageDocRowFromContent` is synchronous (headless editor),
+  so it can run inside a Dexie transaction. `migrateAllPageDocs` runs on
+  load. The fragment name `document-store` must never change.
+- `setPageContent` (pages.ts) is for writes from outside the editor
+  (import): it replaces that page's Yjs state with one built from the new
+  content. `duplicatePage` creates Yjs state for the copies. Anything else
+  that writes `content` must do the same, or the editor won't show it.
 - `db.ts`: `getDb()` opens the database on first call and caches it.
   `createDb(name)` applies the schema to any name; Local mode uses
   `xeento`. Data modules take `const db = getDb()` once per function (a
   whole transaction uses one instance); hooks call `getDb()` inside the
   live query.
-- `backend/`: type-only adapter interfaces for Sync mode, backend-neutral.
-  `auth.ts` (`AuthProvider`), `sync.ts` (`SyncAdapter`: push / pull since
-  an opaque cursor / subscribe; `SyncChange` with tombstones; `Synced*`
-  types drop device-only fields), `file-storage.ts`
-  (`FileStorageAdapter`). Adapters never touch Dexie; a sync engine
-  applies their results. Local mode has no adapters.
+- `backend/`: adapter interfaces for Sync mode, backend-neutral:
+  `auth.ts` (`AuthProvider`), `sync.ts` (`SyncAdapter`: push returning
+  remote versions that won / pull since an opaque cursor / subscribe;
+  `SyncChange` with tombstones and `changedAt`; `Synced*` types drop
+  device-only fields and page `content`; `SyncError` by cause),
+  `file-storage.ts` (`FileStorageAdapter`, used from Phase 5).
+  `backend/firebase/`: the only implementation. `config.ts` parses the
+  pasted web config without evaluating it; `app.ts` (one app per config,
+  **stable app name** because Firebase stores the session under it;
+  memory-only Firestore cache; `NEXT_PUBLIC_FIREBASE_EMULATORS=1` dev
+  switch); `auth.ts` (email + password, plain-language errors);
+  `setup.ts` (connection, rules probe `xeento-rules/vN`, account schema
+  `users/{uid}/meta/schema`); `sync-adapter.ts` (layout
+  `users/{uid}/{kind}/{id}`; records pushed in transactions for
+  last-write-wins by `changedAt`; Yjs updates batched, chunked over 900KB;
+  own echoes skipped by `deviceId`). Rules require `syncedAt ==
+  request.time` on every write.
+- `sync/`: `engine.ts` (push outbox debounced 3s; pull on start, focus
+  and live listeners; applies changes in transactions marked with
+  `markRemoteTransaction()` so they aren't queued back; a newer pending
+  local change wins; rebuilds `content` from Yjs for pages not open;
+  deletes orphan Yjs rows after a full pull), `account.ts` (start sync,
+  copy Local notes into an account, Disconnect, sign out keep/remove),
+  `setup.ts` (what the setup UI calls, so components stay
+  backend-neutral), `status.ts` (`useSyncStatus`).
+  `sync-settings.ts`: device-only mode/config/uid in localStorage
+  (`useSyncSettings` is null until hydrated).
+- **Sync gotchas:**
+  - Account databases get the `outbox` Dexie middleware (db.ts): every
+    synced change is queued in the same transaction, so data modules
+    don't know about sync. Writes touching only device-only fields
+    (`lastOpenedAt`, `collapsed`, `content`, `updatedAt`) aren't queued.
+    The middleware runs at level 1.5 (below Dexie's hooks layer, which
+    rejects tables outside the Dexie transaction) and uses promise
+    chains, not `await` (native await drops Dexie's transaction zone).
+  - A page's Yjs state is created where the page is created
+    (`createPage`, duplicate, import, restore, copy into account).
+    Account databases never build it from `content`: two devices doing
+    so would duplicate the text. Opening such a page waits for its rows.
+  - Trash tombstones don't delete Yjs rows on apply (restore and delete
+    forever look the same); orphans are swept after a full pull.
+  - Switching account or mode reloads the page (`getDb()` is fixed per
+    load). `deleteUnusedFiles` waits for this session's pull and an
+    empty outbox in Sync mode.
+
 - `pages.ts`: page CRUD. `movePageToPosition` handles reorder, re-parent and
   folder moves, and enforces the nested-`folderId: null` invariant. Also
   `toggleFavourite`, `reorderFavourites`, `touchLastOpened`, `setPageTags`,
@@ -211,15 +286,17 @@ before changing it.
 - `trash.ts` (+ `use-trash.ts`): `trashPage`, `restoreFromTrash` (falls
   back to Pages root if the parent page/folder is gone), `deleteFromTrash`,
   `emptyTrash`, `purgeExpiredTrash` (30 days, run on load from
-  `app-shell.tsx`).
+  `app-shell.tsx`). The last three also delete the pages' Yjs rows.
 - `folders.ts`: `deleteFolder` either re-homes pages one at a time through
   `movePageToPosition` (avoids order collisions) or trashes each page.
 - `files.ts`: `storeFile` (warn >25MB, reject >100MB, via `ui/toast.tsx`).
   `deleteUnusedFiles` scans `pages` and `trash` content for
   `xeento-file://` refs; files under 24h old are always kept (uploads wait
   on the autosave debounce, imports store files before pages).
-- `backup.ts`: lossless zip (`backup.json` + `files/<id>`); restore
-  replaces every table. **Gotcha:** a Dexie transaction commits as soon as
+- `backup.ts`: lossless zip (`backup.json` + `files/<id>` + `yjs/<pageId>`,
+  one merged update per page); restore replaces every table. `yjs/` is
+  optional and the version stays 1, so old backups restore (Yjs rebuilt
+  from `content`) and older app versions restore new ones. **Gotcha:** a Dexie transaction commits as soon as
   it awaits non-IndexedDB work (jszip, fetch), so read everything first,
   then open the transaction.
 - `build-page-tree.ts`: filters **only the top level** by folder. Don't
@@ -233,9 +310,17 @@ before changing it.
   buckets), `use-local-storage-flag.ts` (hydration-safe boolean flag).
 
 **Shell and sidebar (`src/components/`)**
+- `app-root.tsx`: before the workspace: Welcome (`setup/setup-wizard.tsx`)
+  when no mode is chosen, `setup/sign-in-screen.tsx` in Sync mode with
+  nobody signed in (no notes are opened), else `AppShell`; starts/stops
+  sync. `setup/account-sync-dialog.tsx`: Settings → Account & sync.
+  `sidebar/sync-status.tsx`: footer indicator (Sync mode only).
+  `firebase/firestore.rules` is imported as text (`*.rules` Turbopack
+  rule in next.config.ts) for the wizard's Copy rules.
 - `app-shell.tsx`: selected page, global shortcuts (Cmd/Ctrl+K,
   Cmd/Ctrl+\\, page copy/paste). On load it requests persistent storage,
-  then runs `purgeExpiredTrash` → `deleteUnusedFiles`. `openPage(id)` is
+  then runs `purgeExpiredTrash` → `migrateAllPageDocs` (Local mode only)
+  → `deleteUnusedFiles`. `openPage(id)` is
   the only path for real navigation (touches `lastOpenedAt`). Restore-on-reload calls
   `setSelectedId` directly on purpose. It also snapshots `recentIds` once at
   load, so Recent's order only changes on reload.
@@ -254,8 +339,12 @@ before changing it.
   `AppShell`.
 
 **Editor (`src/components/editor/`)**
-- `block-editor.tsx`: BlockNote wrapper. 400ms debounced autosave with
-  flush-on-unmount. Custom slash menu (BlockNote's default omits custom
+- `block-editor.tsx`: BlockNote wrapper. `BlockEditor` waits for
+  `openPageDoc`, then `LoadedBlockEditor` binds BlockNote to the page's Yjs
+  fragment with `withCollaboration` (no provider; this replaces
+  `initialContent` and ProseMirror history with Yjs undo). 400ms debounced
+  `session.save(editor.document)` with flush-on-unmount. Components never
+  import `yjs` itself (lint rule); Yjs stays in `page-doc.ts`. Custom slash menu (BlockNote's default omits custom
   blocks; `/page` creates a child then a `subPage` card). `@` and `[[`
   page menus are two more `SuggestionMenuController`s (multi-char triggers
   work; `@` uses `shouldOpen` to require a word start). `pasteHandler`
@@ -334,9 +423,8 @@ Flagged on purpose. Don't fix these unless asked.
 
 ## Not yet built
 
-See [ROADMAP.md](ROADMAP.md): static export, sync through the user's own
-Firebase + Google Drive (Dexie stays the local store), Yjs page content,
-databases, Tauri apps, bring-your-own-key AI. Build history is in
+See [ROADMAP.md](ROADMAP.md): file sync through the user's Google Drive
+(Phase 5), hosting, databases, Tauri apps, bring-your-own-key AI. Build history is in
 FEATURES.md's Changelog.
 
 ---
@@ -349,7 +437,15 @@ npm run build   # production build, also type-checks
 npm run build:static  # static export to out/ (no link preview route);
                       # NEXT_PUBLIC_BASE_PATH=/sub for a sub-path
 npm run lint    # ESLint
+npm run test:rules  # Firestore rules tests in the emulator. Needs Java 21+
+                    # on PATH (e.g. JAVA_HOME=~/.local/jdk-21/Contents/Home
+                    # on this machine)
 ```
+
+Sync mode against local emulators (dev only): `npx firebase
+emulators:start --only firestore,auth --project demo-xeento`, then
+`NEXT_PUBLIC_FIREBASE_EMULATORS=1 npm run dev`, and paste a config with
+`projectId: "demo-xeento"`.
 
 CI (`.github/workflows/ci.yml`) runs lint, `build` and `build:static` on
 every pull request.

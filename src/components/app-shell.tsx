@@ -21,6 +21,8 @@ import {
   touchLastOpened,
 } from "@/lib/pages";
 import { purgeExpiredTrash, trashPage } from "@/lib/trash";
+import { migrateAllPageDocs } from "@/lib/page-doc";
+import { activeAccountUid } from "@/lib/sync-settings";
 import { deleteUnusedFiles } from "@/lib/files";
 import { toast } from "@/components/ui/toast";
 import { PanelLeftOpen } from "lucide-react";
@@ -82,11 +84,14 @@ export function AppShell() {
   }, [loading, allPages]);
 
   // Once per load: ask the browser not to evict our IndexedDB data when
-  // disk runs low, drop Trash entries past 30 days, then delete stored
-  // files that nothing references any more.
+  // disk runs low, drop Trash entries past 30 days, give pages without
+  // Yjs state (older workspaces and backups) one, then delete stored files
+  // that nothing references any more.
   useEffect(() => {
     void navigator.storage?.persist?.();
-    void purgeExpiredTrash().then(deleteUnusedFiles);
+    // Account databases never build Yjs state from `content` (page-doc.ts).
+    const migrate = activeAccountUid() ? async () => {} : migrateAllPageDocs;
+    void purgeExpiredTrash().then(migrate).then(deleteUnusedFiles);
   }, []);
 
   useEffect(() => {

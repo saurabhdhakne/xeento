@@ -42,3 +42,25 @@ export interface TrashRecord {
   deletedAt: number;
   pages: PageRecord[]; // the top page first, then its descendants
 }
+
+/** One Yjs update for a page's content (see page-doc.ts). Rows for a page merge into its document. */
+export interface PageUpdateRecord {
+  id: string;
+  pageId: string;
+  update: Uint8Array;
+  createdAt: number;
+}
+
+/** Sync mode: one pending change to push (a reference; push reads the current record). */
+export interface OutboxRecord {
+  key: string; // `${table}:${id}`, so repeated changes to a record coalesce
+  table: string;
+  id: string;
+  queuedAt: number;
+}
+
+/** Sync mode: device-only bookkeeping (cursor, device id, first pull done). */
+export interface SyncStateRecord {
+  key: string;
+  value: unknown;
+}

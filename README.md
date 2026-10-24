@@ -8,8 +8,19 @@ blocks, PDFs, embeds and link previews, page mentions and backlinks,
 search, Markdown/Notion import, Markdown/PDF export, Trash, and full
 backup/restore. See [FEATURES.md](FEATURES.md) for the full list.
 
-Optional sync across devices through your own Firebase project and Google
-Drive is planned; see [ROADMAP.md](ROADMAP.md).
+## Local or Sync
+
+On first launch Xeento asks how you want to use it:
+
+- **Use on this device** (Local mode): no account, notes stay in this
+  browser. This is how Xeento has always worked.
+- **Sync across devices**: notes sync through **your own** Firebase
+  project (free plan). Xeento never sees them. Follow
+  [docs/setup/firebase.md](docs/setup/firebase.md); the app walks you
+  through it. Files in notes will sync through your own Google Drive
+  (coming next, see [ROADMAP.md](ROADMAP.md)).
+
+You can switch later in Settings → Account & sync.
 
 ## Run it locally
 
@@ -59,6 +70,21 @@ All are read at build time.
 |---|---|---|
 | `NEXT_PUBLIC_BASE_PATH` | empty | Serve the app from a sub-path |
 | `NEXT_PUBLIC_LINK_PREVIEW_URL` | `<basePath>/api/link-preview` on `npm run build`, empty on `build:static` | Where link metadata is fetched. Empty turns link previews off and hides the setting |
+| `NEXT_PUBLIC_FIREBASE_EMULATORS` | unset | Development only: `1` points Sync mode at local Firebase emulators instead of a real project. Never set it for a real build |
+
+## Testing the Firestore rules
+
+`npm run test:rules` runs the security-rules tests in the Firebase
+emulator. It needs Java 21 or newer on your `PATH` (for example
+[Temurin](https://adoptium.net/)). To try Sync mode without a real
+project:
+
+```
+npx firebase emulators:start --only firestore,auth --project demo-xeento
+NEXT_PUBLIC_FIREBASE_EMULATORS=1 npm run dev
+```
+
+Then use any config with `"projectId": "demo-xeento"` in the setup.
 
 ## About link previews
 

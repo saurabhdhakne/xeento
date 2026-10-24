@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Xeento's Firestore rules. Paste these into your Firebase project
+// (Firestore Database → Rules), replacing what's there. See
+// docs/setup/firebase.md.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Rules version probe. Xeento's setup reads this (it doesn't exist; the
+    // read just has to be allowed) to check these rules are installed and
+    // current. When the rules change, bump the number here and in
+    // src/lib/backend/firebase/setup.ts.
+    match /xeento-rules/v1 {
+      allow get: if true;
+    }
+
+    // Each signed-in user reads and writes only their own data. Every write
+    // must stamp `syncedAt` with the server time: other devices pull
+    // changes by it, so a client can't make a change invisible to them.
+    match /users/{uid}/{document=**} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.syncedAt == request.time;
+    }
+
+    // Everything else is denied.
+  }
+}

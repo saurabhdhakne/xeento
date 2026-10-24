@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef } from "react";
-import { Archive, ArchiveRestore, FolderDown, Link2, Settings as SettingsIcon, Upload } from "lucide-react";
+import { useRef, useState } from "react";
+import { Archive, ArchiveRestore, Cloud, FolderDown, Link2, Settings as SettingsIcon, Upload } from "lucide-react";
 import { Popover } from "./ui/popover";
 import { toast } from "./ui/toast";
 import { importMarkdownFiles } from "@/lib/import/markdown-import";
@@ -12,6 +12,7 @@ import { useImportFlow } from "@/lib/import/use-import-flow";
 import { ImportProgressDialog } from "./import/import-progress-dialog";
 import { LINK_PREVIEWS_SETTING_KEY, linkPreviewsAvailable } from "@/lib/link-preview";
 import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";
+import { AccountSyncDialog } from "./setup/account-sync-dialog";
 
 export function SettingsMenu() {
   const { progress, summary, run, close: closeImportDialog } = useImportFlow();
@@ -19,6 +20,7 @@ export function SettingsMenu() {
   const notionInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const [linkPreviews, setLinkPreviews] = useLocalStorageFlag(LINK_PREVIEWS_SETTING_KEY, true);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   return (
     <>
@@ -37,7 +39,18 @@ export function SettingsMenu() {
       >
         {(close) => (
           <div className="w-60 rounded-lg border border-border bg-popover p-1.5 shadow-lg">
-            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted">Import</p>
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                setAccountOpen(true);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/8"
+            >
+              <Cloud className="h-3.5 w-3.5" />
+              Account & sync
+            </button>
+            <p className="mt-1 border-t border-border px-2 py-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">Import</p>
             <button
               type="button"
               onClick={() => {
@@ -167,6 +180,7 @@ export function SettingsMenu() {
         }}
       />
 
+      {accountOpen && <AccountSyncDialog onClose={() => setAccountOpen(false)} />}
       {progress && (
         <ImportProgressDialog
           processed={progress.processed}

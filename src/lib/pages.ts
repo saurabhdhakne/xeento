@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { getDb } from "./db";
 import { ROOT_ID, type PageRecord } from "./records";
+import { pageDocRowFromContent } from "./page-doc";
 
 const ORDER_STEP = 1024;
 
@@ -63,7 +64,11 @@ export async function createPage(
     createdAt: now,
     updatedAt: now,
   };
-  await db.pages.add(page);
+  // Yjs state is created with the page (see page-doc.ts).
+  await db.transaction("rw", db.pages, db.pageUpdates, async () => {
+    await db.pages.add(page);
+    await db.pageUpdates.add(pageDocRowFromContent(page.id, page.content));
+  });
   return page;
 }
 
@@ -77,9 +82,17 @@ export async function setPageIcon(id: string, icon: string | null) {
   await db.pages.update(id, { icon, updatedAt: Date.now() });
 }
 
+/**
+ * Sets content from outside the editor (import) and replaces the page's
+ * Yjs state with one built from it. The editor saves through page-doc.ts.
+ */
 export async function setPageContent(id: string, content: unknown) {
   const db = getDb();
-  await db.pages.update(id, { content, updatedAt: Date.now() });
+  await db.transaction("rw", db.pages, db.pageUpdates, async () => {
+    await db.pages.update(id, { content, updatedAt: Date.now() });
+    await db.pageUpdates.where("pageId").equals(id).delete();
+    await db.pageUpdates.add(pageDocRowFromContent(id, content));
+  });
 }
 
 export async function setPageTags(id: string, tags: string[]) {
@@ -204,7 +217,7 @@ export async function duplicatePage(
   afterId: string = id,
 ): Promise<PageRecord | undefined> {
   const db = getDb();
-  return db.transaction("rw", db.pages, async () => {
+  return db.transaction("rw", db.pages, db.pageUpdates, async () => {
     const original = await db.pages.get(id);
     const anchor = await db.pages.get(afterId);
     if (!original || !anchor) return undefined;
@@ -256,6 +269,7 @@ export async function duplicatePage(
     // Sub-page cards inside the copied tree point at the copied children.
     for (const copy of copies) remapSubPageIds(copy.content, idMap);
     await db.pages.bulkAdd(copies);
+    await db.pageUpdates.bulkAdd(copies.map((copy) => pageDocRowFromContent(copy.id, copy.content)));
     return root;
   });
 }

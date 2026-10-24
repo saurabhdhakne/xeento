@@ -179,7 +179,7 @@ turned off; the PDF viewer works under a `basePath`.
 **Done when:** the full FEATURES.md regression passes with zero visible
 change. No component imports a backend SDK or Dexie directly.
 
-### [ ] Phase 2 — Yjs page content (still local)
+### [x] Phase 2 — Yjs page content (still local)
 
 - BlockNote's collaboration mode with a Yjs document per page. Yjs
   updates are stored in a new Dexie table (new schema version in `db.ts`),
@@ -199,7 +199,12 @@ and PDF export (IO-01–IO-03), import (IO-04, IO-05), Trash (DS-02), file
 cleanup (DS-03) and backup/restore (DS-04) still pass their FEATURES.md
 tests.
 
-### [ ] Phase 3 — Setup wizard (UI)
+### [x] Phase 3 — Setup wizard (UI)
+
+*Merged into Phase 4 (decided while planning it): the wizard was built
+directly on Firebase and tested against the Firebase emulators instead of
+a mock adapter. `docs/setup/firebase.md` has screenshot placeholders still
+to fill.*
 
 - Build the setup flow screens (including the Welcome text about link
   previews) and Settings → Account & sync, with config validation,
@@ -211,7 +216,7 @@ tests.
 check, back/cancel, skip existing-notes upload) can be walked through with
 the mock.
 
-### [ ] Phase 4 — Firebase backend
+### [x] Phase 4 — Firebase backend
 
 - Firebase Auth (email + password) through the user's own project.
 - Firestore data under `users/{uid}/…`: pages, folders, trash entries,

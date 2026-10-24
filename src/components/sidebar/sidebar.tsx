@@ -17,6 +17,7 @@ import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/records";
 import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";
 import { useLocalStorageNumber } from "@/lib/use-local-storage-number";
 import { useTrash } from "@/lib/use-trash";
+import { SyncStatusIndicator } from "./sync-status";
 import { createFolder, reorderFolders } from "@/lib/folders";
 import { movePageToPosition } from "@/lib/pages";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -372,6 +373,7 @@ export function Sidebar({
         </div>
 
         <div className="border-t border-border px-2 py-2">
+          <SyncStatusIndicator />
           <button
             type="button"
             onClick={() => setTrashOpen(true)}

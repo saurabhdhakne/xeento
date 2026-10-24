@@ -20,15 +20,22 @@ pointer.
 - A file over 25MB and one over 100MB (for ED-02)
 - Sample `.pdf`, `.mp4`, `.mp3` and one other file type (for ED-02)
 - A `.md` file with YAML front-matter (`title`, `tags`) (for IO-04)
-- DevTools → Application → IndexedDB → `xeento` (for DS-02, DS-03)
+- DevTools → Application → IndexedDB → `xeento` (for DS-02, DS-03, DS-05)
 - For ST-03: `npm run build:static`, served with
   `python3 -m http.server 8080 -d out`
+- For ST-04/05, SY-01/02: a Firebase project set up with
+  `docs/setup/firebase.md`, or the local emulators: Java 21+, then
+  `npx firebase emulators:start --only firestore,auth --project demo-xeento`
+  and `NEXT_PUBLIC_FIREBASE_EMULATORS=1 npm run dev`; paste a config with
+  `projectId: "demo-xeento"`
 
 ---
 
 ## Quick smoke test (~5 min)
 
 Run after any change. If something fails, run that area's full tests.
+On a fresh browser profile, choose "Use on this device" on the Welcome
+screen first (ST-04).
 
 1. Create a page, give it a title, icon and some text; reload → everything
    is still there.
@@ -730,7 +737,8 @@ removed before its page saves.
 
 **Behavior:** Settings → "Download full backup" downloads
 `xeento-backup-<date>.zip`: `backup.json` (every page, folder and Trash
-entry exactly as stored) plus `files/<id>` for each stored file. Settings →
+entry exactly as stored) plus `files/<id>` for each stored file and
+`yjs/<pageId>` for each page's content history (DS-05). Settings →
 "Restore from backup…" asks for confirmation, then **replaces** the whole
 workspace (pages, folders, files, Trash) with the backup and reloads.
 Nothing is lost, unlike Markdown export (IO-03). A zip that isn't a Xeento
@@ -754,6 +762,40 @@ the workspace may be too large; if building fails, an error toast says so.
    "still hasn't started… may be too large" warning appears.
 
 **Code:** `src/lib/backup.ts`, `src/components/settings-menu.tsx`
+
+### DS-05 Page content storage (Yjs)
+
+**Behavior:** Each page's content is stored as a Yjs document (IndexedDB
+table `pageUpdates`), the format that lets edits from several devices merge
+once sync arrives. Nothing looks different. Each autosave stores the
+edits since the last save as one row, plus the readable `content`
+snapshot. Opening a page with more than 20 rows merges them into one.
+Pages from before this change get their Yjs state from their content
+automatically on first load. Trash keeps a page's Yjs state; Delete
+forever, Empty trash and the 30-day purge remove it. Undo/redo uses Yjs's
+undo.
+
+**Test:** (DevTools → Application → IndexedDB → `xeento` → `pageUpdates`)
+1. With a workspace made before this change, reload → every page opens
+   unchanged; `pageUpdates` has rows for every page, including Trash.
+   Opening pages adds no rows and doesn't change "edited" times.
+2. Type in a page, wait 1 second → one new row for that page; reload →
+   text kept.
+3. Type, then switch page at once; reload → text kept.
+4. Type, Cmd/Ctrl+Z → typed text undone, the rest of the page intact;
+   Cmd/Ctrl+Shift+Z → redone.
+5. Make 21+ separate edits (pause between them), open another page and
+   come back → the page has 1 row, content intact.
+6. Trash a page → its rows stay; restore → content intact; trash it again
+   and Delete forever → its rows are gone.
+7. Download full backup → zip has `yjs/`. Restore it → same pages and
+   content, one row per page. Restore a backup from before this change →
+   pages open; rows are created for them.
+8. Duplicate a page (SB-06) or import (IO-04/05) → the new pages have rows
+   at once and open with the right content.
+
+**Code:** `src/lib/page-doc.ts`, `src/components/editor/block-editor.tsx`,
+`src/lib/db.ts` (v5)
 
 ---
 
@@ -816,6 +858,151 @@ the PDF viewer's worker loads from under it.
 **Code:** `next.config.ts`, `src/lib/pdf.ts`, `package.json`
 (`build:static`)
 
+### ST-04 Welcome and sync setup
+
+**Behavior:** On first launch (including the first launch after this
+update, once) a Welcome screen explains that notes live on the device or
+in the user's own accounts, plus a sentence about the link-preview server
+when the build has one. **Use on this device** = Local mode, as before.
+**Sync across devices** opens setup, which is also reachable later from
+Settings → Account & sync → Turn on sync:
+1. Firebase project: link to `docs/setup/firebase.md`.
+2. Paste config: the console's `const firebaseConfig = {…}` or JSON,
+   validated as you type (field-specific errors; it's never run as code),
+   then **Test connection**. Next needs a passing test.
+3. Rules: shows `firebase/firestore.rules` with **Copy rules** and a link
+   to the console; **Check rules** must pass (missing / outdated rules
+   block; Firebase's open "test mode" rules pass with a warning).
+4. Account: create an account or sign in (email + password, in the
+   user's project). Errors in plain language: account exists, sign-up
+   disabled, wrong password, weak password, Email/Password not enabled.
+5. Existing notes (only if Local has pages): **Copy my notes** into the
+   account (they also stay in Local) or **Skip**.
+6. Done → **Finish** switches to Sync mode.
+
+Back keeps what was entered; Cancel (after confirming) changes nothing.
+Nothing is saved until Finish; a reload mid-setup starts again.
+
+**Test:** (Sync steps need a Firebase project, or the emulators: see
+Test prerequisites)
+1. Fresh browser profile → Welcome; server build mentions the preview
+   server, static build doesn't.
+2. Use on this device → app as before; reload → no Welcome.
+3. Settings → Account & sync → "Local mode"; Turn on sync → setup at step
+   1, no Back. Cancel → confirm → back in the app, still Local.
+4. Step 2: paste `hello` → "Paste the whole config object"; a config
+   without `projectId` → "projectId is missing."; a bad `apiKey` → apiKey
+   hint. Next disabled in each case.
+5. Paste the console snippet → no errors; Test connection → "Connected to
+   <project>"; with the network off → "Couldn't reach Firebase", retry
+   possible.
+6. Step 3 with rules not yet published → "aren't installed yet", no Next;
+   with test-mode rules → passes with a warning; with Xeento's rules →
+   "Rules are installed". Copy rules → clipboard matches the file.
+7. Back from step 3 → step 2 with the config still there.
+8. Step 4: an email that already has an account → "already exists"; Sign
+   in with a wrong password → "Wrong email or password"; password `123` →
+   "at least 6 characters". With sign-up turned off in the project →
+   "Creating accounts is turned off".
+9. Create an account with Local pages present → step 5. Copy my notes →
+   progress, then "Copied N items" → Next → Finish → Sync mode; the
+   sidebar shows "Synced" and the copied pages.
+10. With no Local pages → step 5 is skipped.
+
+**Code:** `src/components/setup/setup-wizard.tsx`, `src/components/app-root.tsx`,
+`src/lib/sync/setup.ts`, `src/lib/backend/firebase/`
+
+### ST-05 Account & sync
+
+**Behavior:** Settings → **Account & sync**. Local mode: explains Local
+mode, **Turn on sync**, **Export all** (the DS-04 backup). Sync mode:
+project, account email, Google Drive (not yet), status, last sync, and:
+- **Sign out**: choose **Keep offline copy** (this account's database
+  stays on the device) or **Remove from this device** (deletes it). Then
+  the sign-in screen, which shows no notes, with "Use Local mode
+  instead" and "Use a different Firebase project".
+- **Disconnect (back to Local)**: if the device has older Local notes,
+  downloads them as `xeento-local-before-disconnect-<date>.zip` first;
+  then the account's notes become the Local notes, and the device signs
+  out.
+- **Export all**: the full backup.
+
+The sidebar footer shows the sync state in Sync mode (Synced / Syncing… /
+Offline / Not syncing, with the reason on hover); clicking it opens this
+dialog.
+
+**Test:**
+1. In Sync mode the dialog shows project, email, "Up to date" and a last
+   sync time. Export all → `xeento-backup-<date>.zip` downloads.
+2. Sign out → keep/remove choice. Keep → sign-in screen, no notes visible;
+   DevTools shows `xeento-<uid>` still there.
+3. Disconnect on a device whose Local mode had pages → the
+   `xeento-local-before-disconnect` zip downloads, then Local mode shows the
+   account's notes and no sync indicator.
+
+**Code:** `src/components/setup/account-sync-dialog.tsx`,
+`src/components/setup/sign-in-screen.tsx`, `src/components/sidebar/sync-status.tsx`,
+`src/lib/sync/account.ts`
+
+---
+
+## Sync
+
+Needs two browsers (or two browser profiles) signed in to the same
+account, on a Firebase project or the emulators.
+
+### SY-01 Sync between devices
+
+**Behavior:** In Sync mode every change is saved on the device first
+(Dexie) and queued; the queue is pushed a few seconds later. Changes from
+other devices are pulled on start, when the window regains focus, and
+live while the app is open. Page content merges (Yjs): edits from two
+devices, even made offline, both survive. Titles, icons, tags, folders,
+order and favourites: the latest change wins. Deletes, restores and Delete
+forever sync. Not synced (device-only): which page is open, Recent order,
+collapsed folders, sidebar layout, link-preview setting. Files don't sync
+yet (Phase 5): a file added on one device stays on that device. If the
+Firebase free daily limit is hit, changes wait on the device and sync
+after it resets.
+
+**Test:**
+1. Device 2 signs in to the same account (setup, "I already have an
+   account") → it gets all pages; opening one shows its content.
+2. Create a page with text on device 1 → it appears on device 2 within a
+   few seconds, with its text.
+3. Keep the page open on device 2 while typing on device 1 → the text
+   appears live on device 2; search on device 2 finds it.
+4. Rename a page on device 2 → device 1 shows the new title.
+5. Delete a page on device 1 → gone on device 2 and in its Trash; restore
+   on device 2 → back on device 1 with its content.
+6. Delete forever on device 2 → device 1's Trash empties.
+7. Open the same page on both, turn both offline (DevTools → Network →
+   Offline), type different text on each, go back online → both texts on
+   both devices.
+8. Leave both idle → sidebar shows "Synced" on both.
+
+**Code:** `src/lib/sync/engine.ts`, `src/lib/db.ts` (outbox middleware),
+`src/lib/backend/firebase/sync-adapter.ts`, `src/lib/page-doc.ts`
+
+### SY-02 Several accounts on one device
+
+**Behavior:** Each account has its own database on the device
+(`xeento-<uid>`); Local mode keeps `xeento`. Signing out never shows the
+previous account's notes. Data is stored under `users/{uid}/` in
+Firestore, and the rules stop one account reading or writing another's
+(`npm run test:rules`).
+
+**Test:**
+1. Signed in as A: Sign out → Keep offline copy → sign-in screen, no notes.
+2. Create account B → B sees none of A's notes. Create a page.
+3. Sign out → Remove from this device → B's database is deleted; A's is
+   still there.
+4. Sign in as A → only A's notes, synced.
+5. `npm run test:rules` → all pass (B can't read or write A's data).
+
+**Code:** `src/lib/sync/account.ts`, `src/lib/db.ts` (`getDb`),
+`firebase/firestore.rules`, `tests/firestore-rules.test.mjs`
+
 ---
 
 ## Keyboard shortcuts
@@ -838,7 +1025,10 @@ the PDF viewer's worker loads from under it.
 
 ## Known limitations
 
-- Single browser only: data lives in IndexedDB, no sync yet.
+- Sync (SY-01) doesn't carry files yet: they stay on the device where
+  they were added until Google Drive storage (ROADMAP Phase 5).
+- A single save bigger than about 8MB of page content can't sync
+  (Firestore's request limit).
 - `npm run build:static` sets its env variable with POSIX shell syntax, so
   it doesn't run from Windows `cmd` (use WSL or Git Bash).
 - A deleted block's file stays stored until the next cleanup (DS-03): at
@@ -905,3 +1095,12 @@ hosting. MIT LICENSE, CONTRIBUTING.md, README, CI on pull requests.
 **Roadmap Phase 1 — Adapter interfaces:** no visible change. Data types
 moved to `records.ts`, the database opens on demand, Sync-mode adapter
 interfaces added. Existing workspaces open unchanged.
+
+**Roadmap Phase 2 — Yjs page content:** DS-05 page content stored as Yjs
+(migrates existing pages; Trash, duplicate, import and DS-04 backup carry
+Yjs state; older backups still restore). Undo/redo now uses Yjs undo.
+
+**Roadmap Phases 3+4 — Sync with your own Firebase:** ST-04 Welcome and
+sync setup, ST-05 Account & sync, SY-01 sync between devices, SY-02
+several accounts on one device. Local mode unchanged apart from the
+one-time Welcome screen.
