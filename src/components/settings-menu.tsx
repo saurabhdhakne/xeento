@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Archive, ArchiveRestore, FolderDown, Settings as SettingsIcon, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, FolderDown, Link2, Settings as SettingsIcon, Upload } from "lucide-react";
 import { Popover } from "./ui/popover";
 import { toast } from "./ui/toast";
 import { importMarkdownFiles } from "@/lib/import/markdown-import";
@@ -10,12 +10,15 @@ import { exportWorkspaceAsZip } from "@/lib/export/markdown-export";
 import { downloadBackup, restoreBackup } from "@/lib/backup";
 import { useImportFlow } from "@/lib/import/use-import-flow";
 import { ImportProgressDialog } from "./import/import-progress-dialog";
+import { LINK_PREVIEWS_SETTING_KEY, linkPreviewsAvailable } from "@/lib/link-preview";
+import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";
 
 export function SettingsMenu() {
   const { progress, summary, run, close: closeImportDialog } = useImportFlow();
   const markdownInputRef = useRef<HTMLInputElement>(null);
   const notionInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const [linkPreviews, setLinkPreviews] = useLocalStorageFlag(LINK_PREVIEWS_SETTING_KEY, true);
 
   return (
     <>
@@ -93,6 +96,31 @@ export function SettingsMenu() {
               <ArchiveRestore className="h-3.5 w-3.5" />
               Restore from backup…
             </button>
+            {linkPreviewsAvailable && (
+              <>
+                <p className="mt-1 border-t border-border px-2 py-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  This device
+                </p>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={linkPreviews}
+                  onClick={() => setLinkPreviews(!linkPreviews)}
+                  title="Fetch titles and images for pasted links through the preview server"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/8"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  <span className="flex-1">Link previews</span>
+                  <span
+                    className={`flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${
+                      linkPreviews ? "justify-end bg-accent" : "justify-start bg-black/15 dark:bg-white/20"
+                    }`}
+                  >
+                    <span className="h-3 w-3 rounded-full bg-white shadow-sm" />
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         )}
       </Popover>

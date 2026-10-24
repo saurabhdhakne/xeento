@@ -1,7 +1,7 @@
 "use client";
 
 import { buildPageTree } from "@/lib/build-page-tree";
-import type { PageRecord } from "@/lib/db";
+import type { PageRecord } from "@/lib/records";
 import { DropSentinel } from "./drop-sentinel";
 import { PagesTree } from "./pages-tree";
 import { SectionHeader } from "./section-header";

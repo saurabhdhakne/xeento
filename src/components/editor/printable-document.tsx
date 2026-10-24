@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PageRecord } from "@/lib/db";
+import type { PageRecord } from "@/lib/records";
 import { getPage } from "@/lib/pages";
 import { PrintablePage } from "./printable-page";
 

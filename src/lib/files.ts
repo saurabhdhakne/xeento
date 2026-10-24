@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
-import { db, type FileRecord } from "./db";
+import { getDb } from "./db";
+import type { FileRecord } from "./records";
 import { toast } from "@/components/ui/toast";
 
 const WARN_BYTES = 25 * 1024 * 1024;
@@ -24,6 +25,7 @@ function formatBytes(bytes: number): string {
  * file right away; deleteUnusedFiles cleans up later.
  */
 export async function storeFile(file: File): Promise<FileRecord> {
+  const db = getDb();
   if (file.size > REJECT_BYTES) {
     toast.error(`"${file.name}" is ${formatBytes(file.size)} — files over 100 MB aren't supported.`);
     throw new Error(`File too large: ${file.name} (${file.size} bytes)`);
@@ -45,10 +47,12 @@ export async function storeFile(file: File): Promise<FileRecord> {
 }
 
 export async function getFile(id: string): Promise<FileRecord | undefined> {
+  const db = getDb();
   return db.files.get(id);
 }
 
 export async function deleteFile(id: string): Promise<void> {
+  const db = getDb();
   await db.files.delete(id);
 }
 
@@ -62,6 +66,7 @@ const UNUSED_GRACE_MS = 24 * 60 * 60 * 1000;
  * (a restore must bring their files back). Skips files under a day old.
  */
 export async function deleteUnusedFiles(): Promise<void> {
+  const db = getDb();
   await db.transaction("rw", db.files, db.pages, db.trash, async () => {
     const used = new Set<string>();
     const collect = (content: unknown) => {

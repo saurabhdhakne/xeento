@@ -1,15 +1,18 @@
 import { nanoid } from "nanoid";
-import { db, ROOT_ID, type FolderRecord } from "./db";
+import { getDb } from "./db";
+import { ROOT_ID, type FolderRecord } from "./records";
 import { getChildren, movePageToPosition } from "./pages";
 import { trashPage } from "./trash";
 
 const ORDER_STEP = 1024;
 
 export async function getAllFolders(): Promise<FolderRecord[]> {
+  const db = getDb();
   return (await db.folders.toArray()).sort((a, b) => a.order - b.order);
 }
 
 export async function createFolder(name = "New folder"): Promise<FolderRecord> {
+  const db = getDb();
   const existing = await getAllFolders();
   const order = existing.length === 0 ? ORDER_STEP : existing[existing.length - 1].order + ORDER_STEP;
   const folder: FolderRecord = { id: nanoid(), name, order, collapsed: false };
@@ -18,14 +21,17 @@ export async function createFolder(name = "New folder"): Promise<FolderRecord> {
 }
 
 export async function renameFolder(id: string, name: string) {
+  const db = getDb();
   await db.folders.update(id, { name });
 }
 
 export async function setFolderCollapsed(id: string, collapsed: boolean) {
+  const db = getDb();
   await db.folders.update(id, { collapsed });
 }
 
 export async function reorderFolders(orderedIds: string[]) {
+  const db = getDb();
   await db.transaction("rw", db.folders, async () => {
     for (let i = 0; i < orderedIds.length; i++) {
       await db.folders.update(orderedIds[i], { order: (i + 1) * ORDER_STEP });
@@ -44,6 +50,7 @@ export async function reorderFolders(orderedIds: string[]) {
  * page (with its sub-pages) goes to Trash as its own entry.
  */
 export async function deleteFolder(id: string, mode: "moveToRoot" | "deleteContents") {
+  const db = getDb();
   await db.transaction("rw", db.pages, db.folders, db.trash, async () => {
     const directPages = await getChildren(ROOT_ID, id);
 

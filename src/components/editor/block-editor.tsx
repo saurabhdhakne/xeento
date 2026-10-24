@@ -24,7 +24,7 @@ import { createPage, getAllPages, setPageContent } from "@/lib/pages";
 import { uploadFileToFileStore } from "@/lib/upload-file";
 import { createFileUrlResolver } from "@/lib/use-files";
 import { blockTypeForFile } from "@/lib/block-type-for-file";
-import { fetchLinkPreview, parsePastedUrl } from "@/lib/link-preview";
+import { fetchLinkPreview, linkPreviewsEnabled, parsePastedUrl } from "@/lib/link-preview";
 import { xeentoSchema } from "./schema";
 import { FileDropZone } from "./file-drop-zone";
 import { PasteUrlMenu, type PastedUrl } from "./paste-url-menu";
@@ -66,14 +66,19 @@ function getCustomSlashMenuItems(editor: XeentoEditor, pageId: string): DefaultR
       icon: <Video size={18} />,
       onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: "embed" }),
     },
-    {
-      title: "Bookmark",
-      subtext: "Link preview card with title, description and image",
-      aliases: ["bookmark", "link", "preview", "url"],
-      group: "Media",
-      icon: <Bookmark size={18} />,
-      onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: "bookmark" }),
-    },
+    // Hidden when link previews are off: a bookmark needs fetched metadata.
+    ...(linkPreviewsEnabled()
+      ? [
+          {
+            title: "Bookmark",
+            subtext: "Link preview card with title, description and image",
+            aliases: ["bookmark", "link", "preview", "url"],
+            group: "Media",
+            icon: <Bookmark size={18} />,
+            onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: "bookmark" }),
+          },
+        ]
+      : []),
   ];
 }
 
@@ -172,7 +177,7 @@ export function BlockEditor({ pageId, initialContent }: BlockEditorProps) {
       const from = selection.from;
       editor.insertInlineContent([{ type: "link", href: url, content: url }], { updateSelection: true });
       const to = editor.prosemirrorState.selection.from;
-      void fetchLinkPreview(url);
+      if (linkPreviewsEnabled()) void fetchLinkPreview(url);
       setPastedUrl({ url, from, to, blockId: block.id });
       return true;
     },

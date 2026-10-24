@@ -1,4 +1,5 @@
-import { db, ROOT_ID } from "./db";
+import { getDb } from "./db";
+import { ROOT_ID } from "./records";
 import { deleteUnusedFiles } from "./files";
 import { getDescendantIds, nextOrder } from "./pages";
 
@@ -6,6 +7,7 @@ const TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Moves a page and all its sub-pages out of the workspace into one Trash entry. */
 export async function trashPage(id: string) {
+  const db = getDb();
   await db.transaction("rw", db.pages, db.trash, async () => {
     const page = await db.pages.get(id);
     if (!page) return;
@@ -25,6 +27,7 @@ export async function trashPage(id: string) {
  * page or folder no longer exists, it lands at the top level of Pages.
  */
 export async function restoreFromTrash(id: string) {
+  const db = getDb();
   await db.transaction("rw", db.pages, db.folders, db.trash, async () => {
     const entry = await db.trash.get(id);
     if (!entry) return;
@@ -44,16 +47,19 @@ export async function restoreFromTrash(id: string) {
 }
 
 export async function deleteFromTrash(id: string) {
+  const db = getDb();
   await db.trash.delete(id);
   await deleteUnusedFiles();
 }
 
 export async function emptyTrash() {
+  const db = getDb();
   await db.trash.clear();
   await deleteUnusedFiles();
 }
 
 /** Permanently deletes Trash entries older than 30 days. */
 export async function purgeExpiredTrash() {
+  const db = getDb();
   await db.trash.where("deletedAt").below(Date.now() - TRASH_TTL_MS).delete();
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { PageRecord } from "@/lib/db";
+import type { PageRecord } from "@/lib/records";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

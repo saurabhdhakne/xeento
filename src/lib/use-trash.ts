@@ -1,7 +1,8 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type TrashRecord } from "./db";
+import { getDb } from "./db";
+import type { TrashRecord } from "./records";
 
 /** Newest deletions first. */
 export function useTrash(): TrashRecord[] | undefined {
-  return useLiveQuery(() => db.trash.orderBy("deletedAt").reverse().toArray(), []);
+  return useLiveQuery(() => getDb().trash.orderBy("deletedAt").reverse().toArray(), []);
 }

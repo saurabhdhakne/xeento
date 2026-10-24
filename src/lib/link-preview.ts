@@ -1,16 +1,32 @@
-import type { LinkPreviewResponse } from "@/app/api/link-preview/route";
+import type { LinkPreviewResponse } from "@/app/api/link-preview/route.server";
 
 export type LinkPreview = LinkPreviewResponse;
+
+// Set in next.config.ts: the app's own `/api/link-preview` route on a server
+// build, empty on a static export (no server) unless configured.
+const PREVIEW_URL = process.env.NEXT_PUBLIC_LINK_PREVIEW_URL ?? "";
+
+/** True when this build has a preview server; otherwise the setting is hidden. */
+export const linkPreviewsAvailable = PREVIEW_URL !== "";
+
+/** Device-only setting (Settings → Link previews), on by default. */
+export const LINK_PREVIEWS_SETTING_KEY = "xeento:link-previews";
+
+/** Whether link metadata may be fetched. When false, nothing is sent to the preview server. */
+export function linkPreviewsEnabled(): boolean {
+  return linkPreviewsAvailable && window.localStorage.getItem(LINK_PREVIEWS_SETTING_KEY) !== "0";
+}
 
 // One request per URL per session — the paste menu prefetches as soon as a
 // URL is pasted, so by the time Mention/Bookmark is picked it's usually ready.
 const cache = new Map<string, Promise<LinkPreview>>();
 
-/** Title/description/og:image/favicon for a URL, via the server-side `/api/link-preview` route. Never rejects. */
+/** Title/description/og:image/favicon for a URL, via the link-preview server. Never rejects. */
 export function fetchLinkPreview(url: string): Promise<LinkPreview> {
+  if (!linkPreviewsEnabled()) return Promise.resolve(fallbackLinkPreview(url));
   let pending = cache.get(url);
   if (!pending) {
-    pending = fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
+    pending = fetch(`${PREVIEW_URL}?url=${encodeURIComponent(url)}`)
       .then((res) => res.json())
       .then((data: Partial<LinkPreview>) => ({ ...fallbackLinkPreview(url), ...stripEmpty(data) }))
       .catch(() => fallbackLinkPreview(url));

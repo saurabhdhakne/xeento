@@ -1,6 +1,6 @@
 import matter from "gray-matter";
 import Papa from "papaparse";
-import { ROOT_ID } from "@/lib/db";
+import { ROOT_ID } from "@/lib/records";
 import { createPage, movePageToPosition, setPageContent, setPageTags, getPage, emptyDocument } from "@/lib/pages";
 import { createFolder } from "@/lib/folders";
 import { storeFile } from "@/lib/files";

@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
-import { db, ROOT_ID, type PageRecord } from "./db";
+import { getDb } from "./db";
+import { ROOT_ID, type PageRecord } from "./records";
 
 const ORDER_STEP = 1024;
 
@@ -18,6 +19,7 @@ export async function getChildren(
   parentId: string,
   folderId: string | null = null,
 ): Promise<PageRecord[]> {
+  const db = getDb();
   const items = await db.pages.where("parentId").equals(parentId).toArray();
   const scoped =
     parentId === ROOT_ID ? items.filter((p) => (p.folderId ?? null) === folderId) : items;
@@ -25,10 +27,12 @@ export async function getChildren(
 }
 
 export async function getPage(id: string): Promise<PageRecord | undefined> {
+  const db = getDb();
   return db.pages.get(id);
 }
 
 export async function getAllPages(): Promise<PageRecord[]> {
+  const db = getDb();
   return db.pages.toArray();
 }
 
@@ -42,6 +46,7 @@ export async function createPage(
   parentId: string = ROOT_ID,
   title = "Untitled",
 ): Promise<PageRecord> {
+  const db = getDb();
   const now = Date.now();
   const page: PageRecord = {
     id: nanoid(),
@@ -63,27 +68,33 @@ export async function createPage(
 }
 
 export async function renamePage(id: string, title: string) {
+  const db = getDb();
   await db.pages.update(id, { title, updatedAt: Date.now() });
 }
 
 export async function setPageIcon(id: string, icon: string | null) {
+  const db = getDb();
   await db.pages.update(id, { icon, updatedAt: Date.now() });
 }
 
 export async function setPageContent(id: string, content: unknown) {
+  const db = getDb();
   await db.pages.update(id, { content, updatedAt: Date.now() });
 }
 
 export async function setPageTags(id: string, tags: string[]) {
+  const db = getDb();
   await db.pages.update(id, { tags, updatedAt: Date.now() });
 }
 
 /** Deliberately does NOT touch updatedAt — that field drives search's recency grouping. */
 export async function touchLastOpened(id: string) {
+  const db = getDb();
   await db.pages.update(id, { lastOpenedAt: Date.now() });
 }
 
 export async function toggleFavourite(id: string) {
+  const db = getDb();
   const page = await db.pages.get(id);
   if (!page) return;
   if (page.favourite) {
@@ -96,6 +107,7 @@ export async function toggleFavourite(id: string) {
 }
 
 export async function reorderFavourites(orderedIds: string[]) {
+  const db = getDb();
   await db.transaction("rw", db.pages, async () => {
     for (let i = 0; i < orderedIds.length; i++) {
       await db.pages.update(orderedIds[i], { favouriteOrder: (i + 1) * ORDER_STEP });
@@ -104,6 +116,7 @@ export async function reorderFavourites(orderedIds: string[]) {
 }
 
 export async function getDescendantIds(id: string): Promise<string[]> {
+  const db = getDb();
   const result: string[] = [];
   const queue = [id];
   while (queue.length) {
@@ -143,6 +156,7 @@ export async function movePageToPosition(
   targetIndex: number,
   newFolderId: string | null = null,
 ) {
+  const db = getDb();
   if (await isSameOrDescendant(activeId, newParentId)) return;
 
   const effectiveFolderId = newParentId === ROOT_ID ? newFolderId : null;
@@ -189,6 +203,7 @@ export async function duplicatePage(
   id: string,
   afterId: string = id,
 ): Promise<PageRecord | undefined> {
+  const db = getDb();
   return db.transaction("rw", db.pages, async () => {
     const original = await db.pages.get(id);
     const anchor = await db.pages.get(afterId);

@@ -1,5 +1,6 @@
 import JSZip from "jszip";
-import { db, type FileRecord, type FolderRecord, type PageRecord, type TrashRecord } from "./db";
+import { getDb } from "./db";
+import type { FileRecord, FolderRecord, PageRecord, TrashRecord } from "./records";
 import { downloadBlob } from "./download";
 import { formatBytes } from "./files";
 import { toast } from "@/components/ui/toast";
@@ -42,6 +43,7 @@ export async function downloadBackup(): Promise<void> {
 }
 
 async function buildAndDownloadBackup(onSizeKnown: (totalBytes: number) => void): Promise<void> {
+  const db = getDb();
   const zip = new JSZip();
   const files = await db.files.toArray();
   onSizeKnown(files.reduce((sum, file) => sum + file.size, 0));
@@ -66,6 +68,7 @@ async function buildAndDownloadBackup(onSizeKnown: (totalBytes: number) => void)
  * leaving the workspace untouched, if the zip isn't a Xeento backup.
  */
 export async function restoreBackup(zipFile: File): Promise<void> {
+  const db = getDb();
   const zip = await JSZip.loadAsync(zipFile);
   const json = await zip.file("backup.json")?.async("string");
   if (!json) throw new Error("Not a Xeento backup: backup.json is missing");

@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type FolderRecord } from "./db";
+import { getDb } from "./db";
+import type { FolderRecord } from "./records";
 
 export function useAllFolders(): FolderRecord[] | undefined {
-  return useLiveQuery(() => db.folders.toArray(), []);
+  return useLiveQuery(() => getDb().folders.toArray(), []);
 }

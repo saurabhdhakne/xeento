@@ -1,4 +1,4 @@
-import { ROOT_ID, type PageRecord } from "./db";
+import { ROOT_ID, type PageRecord } from "./records";
 
 export interface PageTreeNode extends PageRecord {
   children: PageTreeNode[];

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { buildPageTree } from "@/lib/build-page-tree";
-import type { FolderRecord, PageRecord } from "@/lib/db";
+import type { FolderRecord, PageRecord } from "@/lib/records";
 import { deleteFolder, renameFolder, setFolderCollapsed } from "@/lib/folders";
 import { DeleteFolderDialog } from "./delete-folder-dialog";
 import { DropSentinel } from "./drop-sentinel";

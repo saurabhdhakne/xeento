@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { downloadBlob, sanitizeFileName, dedupeName } from "@/lib/download";
-import { ROOT_ID, type PageRecord } from "@/lib/db";
+import { ROOT_ID, type PageRecord } from "@/lib/records";
 import { getAllPages, getChildren, getPage } from "@/lib/pages";
 import { getFile } from "@/lib/files";
 import { getAllFolders } from "@/lib/folders";

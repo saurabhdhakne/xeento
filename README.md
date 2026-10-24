@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Xeento
 
-## Getting Started
+A local-first, block-based notes and docs app. Your notes live on your
+device (IndexedDB). No account, no server storing your data.
 
-First, run the development server:
+Features: nested pages and folders, a block editor with slash menu, code
+blocks, PDFs, embeds and link previews, page mentions and backlinks,
+search, Markdown/Notion import, Markdown/PDF export, Trash, and full
+backup/restore. See [FEATURES.md](FEATURES.md) for the full list.
 
-```bash
+Optional sync across devices through your own Firebase project and Google
+Drive is planned; see [ROADMAP.md](ROADMAP.md).
+
+## Run it locally
+
+Requires Node 24 (Node 20+ should work).
+
+```
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+There are two builds:
 
-## Learn More
+| Command | Output | Link previews |
+|---|---|---|
+| `npm run build` then `npm start` | Next.js server | On, via the built-in `/api/link-preview` route |
+| `npm run build:static` | Static files in `out/`, host anywhere | Off and hidden, unless you set `NEXT_PUBLIC_LINK_PREVIEW_URL` |
 
-To learn more about Next.js, take a look at the following resources:
+`build:static` uses POSIX shell syntax for its env variable (macOS, Linux,
+WSL, Git Bash).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+To serve the static build locally:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+npm run build:static
+python3 -m http.server 8080 -d out
+```
 
-## Deploy on Vercel
+### Hosting under a sub-path (e.g. GitHub Pages)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Set the base path at build time:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+NEXT_PUBLIC_BASE_PATH=/xeento npm run build:static
+```
+
+The contents of `out/` are then served from `https://<host>/xeento/`.
+
+### Environment variables
+
+All are read at build time.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_BASE_PATH` | empty | Serve the app from a sub-path |
+| `NEXT_PUBLIC_LINK_PREVIEW_URL` | `<basePath>/api/link-preview` on `npm run build`, empty on `build:static` | Where link metadata is fetched. Empty turns link previews off and hides the setting |
+
+## About link previews
+
+Pasted links can show a title and image. Browsers can't read other sites'
+pages directly, so the preview server fetches the link's page. It sees the
+URLs you paste, never your notes, and stores nothing. Turn it off in
+Settings → This device → Link previews.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Architecture notes are in
+[CLAUDE.md](CLAUDE.md).
+
+## License
+
+[MIT](LICENSE)

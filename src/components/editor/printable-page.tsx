@@ -5,7 +5,7 @@ import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { syntaxHighlighter } from "@blocknote/code-block";
 import type { PartialBlock } from "@blocknote/core";
-import type { PageRecord } from "@/lib/db";
+import type { PageRecord } from "@/lib/records";
 import { createFileUrlResolver } from "@/lib/use-files";
 import { xeentoSchema } from "./schema";
 

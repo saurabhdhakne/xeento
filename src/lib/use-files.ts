@@ -1,7 +1,8 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type FileRecord } from "./db";
+import { getDb } from "./db";
+import type { FileRecord } from "./records";
 import { getFile } from "./files";
 
 export const FILE_URL_SCHEME = "xeento-file://";
@@ -15,7 +16,7 @@ export function parseFileUrl(url: string): string | null {
 }
 
 export function useFile(id: string | null): FileRecord | undefined {
-  return useLiveQuery(() => (id ? db.files.get(id) : undefined), [id]);
+  return useLiveQuery(() => (id ? getDb().files.get(id) : undefined), [id]);
 }
 
 /**

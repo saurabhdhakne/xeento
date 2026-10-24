@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AtSign, Bookmark, Link2, Loader2, MonitorPlay } from "lucide-react";
-import { fetchLinkPreview } from "@/lib/link-preview";
+import { fetchLinkPreview, linkPreviewsEnabled } from "@/lib/link-preview";
 import { directMediaBlockType } from "@/lib/embed-providers";
 import type { xeentoSchema } from "./schema";
 
@@ -45,6 +45,11 @@ export function PasteUrlMenu({
   pasted: PastedUrl;
   onClose: () => void;
 }) {
+  // Mention and Bookmark need fetched metadata, so they're left out when
+  // link previews are off. Read once, so the list can't change while open.
+  const [options] = useState(() =>
+    linkPreviewsEnabled() ? OPTIONS : OPTIONS.filter((o) => o.id === "embed" || o.id === "url"),
+  );
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState<Option | null>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -152,11 +157,11 @@ export function PasteUrlMenu({
         e.preventDefault();
         e.stopPropagation();
         const step = e.key === "ArrowDown" ? 1 : -1;
-        setActive((i) => (i + step + OPTIONS.length) % OPTIONS.length);
+        setActive((i) => (i + step + options.length) % options.length);
       } else if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         e.stopPropagation();
-        void chooseRef.current(OPTIONS[activeRef.current].id);
+        void chooseRef.current(options[activeRef.current].id);
       } else if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -174,7 +179,7 @@ export function PasteUrlMenu({
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("mousedown", onMouseDown, true);
     };
-  }, [onClose]);
+  }, [onClose, options]);
 
   return createPortal(
     <div
@@ -184,7 +189,7 @@ export function PasteUrlMenu({
       className="fixed z-50 w-64 rounded-lg border border-border bg-popover p-1 shadow-lg"
     >
       <div className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted">Paste as</div>
-      {OPTIONS.map((option, index) => {
+      {options.map((option, index) => {
         const Icon = option.icon;
         return (
           <button

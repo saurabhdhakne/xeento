@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { PageRecord } from "@/lib/db";
+import type { PageRecord } from "@/lib/records";
 import { duplicatePage, reorderFavourites } from "@/lib/pages";
 import { PageTreeRow } from "./page-tree-row";
 import { SectionHeader } from "./section-header";

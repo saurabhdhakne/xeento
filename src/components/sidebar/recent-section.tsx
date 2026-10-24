@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { PageRecord } from "@/lib/db";
+import type { PageRecord } from "@/lib/records";
 import { SectionHeader } from "./section-header";
 import { duplicatePage } from "@/lib/pages";
 import { PageTreeRow } from "./page-tree-row";

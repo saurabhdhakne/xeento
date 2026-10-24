@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FileText, Folder, Layers, Search } from "lucide-react";
-import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/db";
+import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/records";
 import { movePageToPosition } from "@/lib/pages";
 import { getPagePath } from "@/components/search/command-palette";
 import { toast } from "@/components/ui/toast";

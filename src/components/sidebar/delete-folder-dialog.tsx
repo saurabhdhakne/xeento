@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import type { FolderRecord } from "@/lib/db";
+import type { FolderRecord } from "@/lib/records";
 
 interface DeleteFolderDialogProps {
   folder: FolderRecord;

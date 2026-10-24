@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:static": "XEENTO_STATIC_EXPORT=1 next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/copy-pdf-worker.mjs"

@@ -21,6 +21,8 @@ pointer.
 - Sample `.pdf`, `.mp4`, `.mp3` and one other file type (for ED-02)
 - A `.md` file with YAML front-matter (`title`, `tags`) (for IO-04)
 - DevTools → Application → IndexedDB → `xeento` (for DS-02, DS-03)
+- For ST-03: `npm run build:static`, served with
+  `python3 -m http.server 8080 -d out`
 
 ---
 
@@ -36,7 +38,8 @@ Run after any change. If something fails, run that area's full tests.
 5. Cmd/Ctrl+K, search a word from step 1 → the page is found and opens.
 6. Type `/code`, write a line → highlighted code block.
 7. Paste `https://github.com/vercel/next.js` → "Paste as" menu appears;
-   pick Bookmark → preview card.
+   pick Bookmark → preview card. (Static build: the menu shows only Embed
+   and URL; see ST-03.)
 8. Drop a `.pdf` onto the page → inline PDF viewer.
 9. Page "…" → Export → Markdown → a `.md` (or `.zip`) downloads.
 10. Toggle dark mode → whole app, including the editor, restyles.
@@ -460,7 +463,9 @@ menu at the cursor:
 Arrow keys + Enter choose. Escape, typing or clicking away keeps the plain
 link. Pasting a URL over selected text links the selection instead.
 Mentions, bookmarks and links open in a new tab. Metadata is fetched once
-and stored. The preview route refuses private/local addresses.
+and stored. The preview route refuses private/local addresses. With link
+previews off or unavailable (ST-02), the menu shows only Embed and URL and
+nothing is fetched.
 
 **Test:**
 1. Paste `https://github.com/vercel/next.js` into an empty paragraph →
@@ -473,12 +478,13 @@ and stored. The preview route refuses private/local addresses.
 5. Paste a URL mid-sentence → Bookmark → card inserted after the paragraph,
    rest of the sentence stays.
 6. Reload → mentions/bookmarks keep title and image without refetching.
-7. `curl "localhost:3000/api/link-preview?url=http%3A%2F%2F127.0.0.1"` →
+7. Server build only (`npm run dev` or `npm start`):
+   `curl "localhost:3000/api/link-preview?url=http%3A%2F%2F127.0.0.1"` →
    "Refusing to fetch a private or local address".
 
 **Code:** `src/components/editor/paste-url-menu.tsx`,
 `inline/link-mention.tsx`, `blocks/bookmark-block.tsx`,
-`src/app/api/link-preview/route.ts`
+`src/app/api/link-preview/route.server.ts`
 
 ### ED-09 Page mentions (`@` / `[[`)
 
@@ -590,7 +596,8 @@ checked). Choose "Save as PDF". Long pages paginate fully.
 2. Export with "Include sub-pages" → sub-pages included.
 3. Code blocks keep syntax highlighting in the preview.
 
-**Code:** `src/components/printable-document.tsx`, `printable-page.tsx`
+**Code:** `src/components/editor/printable-document.tsx`,
+`printable-page.tsx`
 
 ### IO-03 Workspace export
 
@@ -763,6 +770,52 @@ including the editor and code highlighting.
 
 **Code:** `src/app/globals.css`, next-themes
 
+### ST-02 Link previews setting
+
+**Behavior:** Settings → This device → **Link previews** switch, on by
+default, stored only on this device (`xeento:link-previews` in
+localStorage). When off, nothing is sent to the preview server: the
+"Paste as" menu (ED-08) shows only Embed and URL, `/bookmark` is hidden
+and pasting no longer prefetches. Existing mentions and bookmarks keep
+their stored title and image. The switch is hidden when the build has no
+preview server (static build, ST-03); previews are then always off.
+
+**Test:**
+1. `npm run dev`, open Settings → "Link previews" switch is on.
+2. Paste `https://github.com/vercel/next.js` → menu shows Mention,
+   Bookmark, Embed, URL.
+3. DevTools → Network open. Turn the switch off, paste another URL → menu
+   shows only Embed and URL; no `link-preview` request.
+4. Type `/bookmark` → no Bookmark item.
+5. Mentions and bookmarks made in step 2 → still show title and image.
+6. Reload → switch still off. Turn it on → step 2 works again.
+
+**Code:** `src/lib/link-preview.ts`, `src/components/settings-menu.tsx`,
+`editor/paste-url-menu.tsx`, `editor/block-editor.tsx`
+
+### ST-03 Static build and sub-path hosting
+
+**Behavior:** `npm run build:static` writes a static site to `out/` with
+no server routes, hostable anywhere. Link previews are off and their
+setting hidden unless `NEXT_PUBLIC_LINK_PREVIEW_URL` is set at build time.
+`NEXT_PUBLIC_BASE_PATH` serves the app from a sub-path (GitHub Pages);
+the PDF viewer's worker loads from under it.
+
+**Test:**
+1. `npm run build:static` → succeeds; `out/` has no `api/` folder and has
+   `pdf.worker.min.mjs`.
+2. Serve `out/` and open it → app works (quick smoke test, except step 7);
+   Settings has no "Link previews" switch; pasting a URL offers only Embed
+   and URL.
+3. `NEXT_PUBLIC_BASE_PATH=/xeento npm run build:static`, copy `out/` into a
+   `xeento/` folder of an empty directory, serve that directory and open
+   `/xeento/` → app loads; drop a `.pdf` → it renders, and Network shows
+   the worker from `/xeento/pdf.worker.min.mjs`.
+4. `npm run build` → route list still includes `/api/link-preview`.
+
+**Code:** `next.config.ts`, `src/lib/pdf.ts`, `package.json`
+(`build:static`)
+
 ---
 
 ## Keyboard shortcuts
@@ -786,6 +839,8 @@ including the editor and code highlighting.
 ## Known limitations
 
 - Single browser only: data lives in IndexedDB, no sync yet.
+- `npm run build:static` sets its env variable with POSIX shell syntax, so
+  it doesn't run from Windows `cmd` (use WSL or Git Bash).
 - A deleted block's file stays stored until the next cleanup (DS-03): at
   least 24 hours, then the next load.
 - Restore from backup replaces the workspace; it can't merge.
@@ -842,3 +897,11 @@ cleanup, DS-04 full backup and restore.
 backlinks, ED-10 sub-page block, PG-07 Move to… dialog (PG-04 "…" menu,
 Cmd/Ctrl+Shift+M). SB-06/PG-05 duplicate remaps sub-page cards; IO-01
 exports page links as titles.
+
+**Roadmap Phase 0 — Prepare the project:** ST-02 link previews setting
+(ED-08 hides Mention/Bookmark when off), ST-03 static build and sub-path
+hosting. MIT LICENSE, CONTRIBUTING.md, README, CI on pull requests.
+
+**Roadmap Phase 1 — Adapter interfaces:** no visible change. Data types
+moved to `records.ts`, the database opens on demand, Sync-mode adapter
+interfaces added. Existing workspaces open unchanged.

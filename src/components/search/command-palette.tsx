@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { blockNoteToPlainText } from "@/lib/block-text";
-import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/db";
+import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/records";
 import {
   RECENCY_ORDER,
   matchesDateFilter,

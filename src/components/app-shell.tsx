@@ -6,7 +6,7 @@ import { PageView } from "@/components/page-view";
 import { EmptyState } from "@/components/empty-state";
 import { CommandPalette } from "@/components/search/command-palette";
 import { MoveToDialog } from "@/components/move-to-dialog";
-import { ROOT_ID } from "@/lib/db";
+import { ROOT_ID } from "@/lib/records";
 import { useAllPages } from "@/lib/use-pages";
 import { useAllFolders } from "@/lib/use-folders";
 import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";

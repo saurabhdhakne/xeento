@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { PanelLeftClose, Plus, Search, Trash2 } from "lucide-react";
 import { isAfter, isNestGesture } from "@/lib/dnd-utils";
-import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/db";
+import { ROOT_ID, type FolderRecord, type PageRecord } from "@/lib/records";
 import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";
 import { useLocalStorageNumber } from "@/lib/use-local-storage-number";
 import { useTrash } from "@/lib/use-trash";
