@@ -23,6 +23,9 @@ pointer.
 - DevTools → Application → IndexedDB → `xeento` (for DS-02, DS-03, DS-05)
 - For ST-03: `npm run build:static`, served with
   `python3 -m http.server 8080 -d out`
+- For SY-03: `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in `.env.local` and your
+  Google account as a test user on the consent screen
+  (`docs/setup/google-drive.md`); real Google sign-in, so not the emulators
 - For ST-04/05, SY-01/02: a Firebase project set up with
   `docs/setup/firebase.md`, or the local emulators: Java 21+, then
   `npx firebase emulators:start --only firestore,auth --project demo-xeento`
@@ -876,9 +879,11 @@ Settings → Account & sync → Turn on sync:
 4. Account: create an account or sign in (email + password, in the
    user's project). Errors in plain language: account exists, sign-up
    disabled, wrong password, weak password, Email/Password not enabled.
-5. Existing notes (only if Local has pages): **Copy my notes** into the
+5. Connect Google Drive (only when the build has a client ID): **Connect
+   Google Drive** or **Skip for now** (SY-03).
+6. Existing notes (only if Local has pages): **Copy my notes** into the
    account (they also stay in Local) or **Skip**.
-6. Done → **Finish** switches to Sync mode.
+7. Done → **Finish** switches to Sync mode.
 
 Back keeps what was entered; Cancel (after confirming) changes nothing.
 Nothing is saved until Finish; a reload mid-setup starts again.
@@ -916,12 +921,15 @@ Test prerequisites)
 
 **Behavior:** Settings → **Account & sync**. Local mode: explains Local
 mode, **Turn on sync**, **Export all** (the DS-04 backup). Sync mode:
-project, account email, Google Drive (not yet), status, last sync, and:
+project, account email, Google Drive (connected as… / Connect /
+Reconnect / Disconnect, files waiting; SY-03), status, last sync, and:
 - **Sign out**: choose **Keep offline copy** (this account's database
   stays on the device) or **Remove from this device** (deletes it). Then
   the sign-in screen, which shows no notes, with "Use Local mode
   instead" and "Use a different Firebase project".
-- **Disconnect (back to Local)**: if the device has older Local notes,
+- **Disconnect (back to Local)**: first fetches files only in Google Drive
+  (asks before continuing if some can't be fetched); if the device has
+  older Local notes,
   downloads them as `xeento-local-before-disconnect-<date>.zip` first;
   then the account's notes become the Local notes, and the device signs
   out.
@@ -960,8 +968,8 @@ live while the app is open. Page content merges (Yjs): edits from two
 devices, even made offline, both survive. Titles, icons, tags, folders,
 order and favourites: the latest change wins. Deletes, restores and Delete
 forever sync. Not synced (device-only): which page is open, Recent order,
-collapsed folders, sidebar layout, link-preview setting. Files don't sync
-yet (Phase 5): a file added on one device stays on that device. If the
+collapsed folders, sidebar layout, link-preview setting. Files sync
+through Google Drive (SY-03). If the
 Firebase free daily limit is hit, changes wait on the device and sync
 after it resets.
 
@@ -1003,6 +1011,52 @@ Firestore, and the rules stop one account reading or writing another's
 **Code:** `src/lib/sync/account.ts`, `src/lib/db.ts` (`getDb`),
 `firebase/firestore.rules`, `tests/firestore-rules.test.mjs`
 
+### SY-03 Files through Google Drive
+
+**Behavior:** In Sync mode each account connects its own Google Drive
+(setup step 5, or Settings → Account & sync). Xeento asks only for
+`drive.file` (it sees just the files it creates) and keeps them in a
+`Xeento` folder. A file added on one device uploads to Drive, then its
+details sync; another device downloads it the first time it's shown and
+keeps a copy, so it also works offline. A page can arrive before its
+files: the block keeps loading for up to 2 minutes while the other device
+finishes uploading. 25MB warning / 100MB limit as ED-02. Without Drive
+connected, new files stay on the device and wait ("Synced · files waiting
+for Drive"); connecting uploads them. Google's access lasts about an hour
+and renews quietly; if the browser blocks that, the sidebar says
+**Reconnect Google Drive**. Disconnect revokes access; files already in
+Drive keep working. Export all and Disconnect fetch files only in Drive
+first. Delete forever + file cleanup (DS-03, after 24h) also deletes the
+Drive copy. Hidden entirely when the build has no
+`NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
+
+**Test:** (two devices signed in to the same account; your Google account
+must be a test user on the OAuth consent screen while it's in Testing)
+1. Connect Google Drive → Google's window → "Connected as <your Gmail>";
+   your Drive gets a `Xeento` folder.
+2. Drop an image and a PDF on device 1 → both appear in Drive's `Xeento`
+   folder within seconds.
+3. Open the page on device 2 → both show. Turn device 2's network off and
+   open the page again → they still show (local copy).
+4. Drop a file over 25MB → warning, uploads; over 100MB → refused.
+5. Disconnect Drive on device 1 → existing files still show; drop a file →
+   sidebar "files waiting for Drive", Account & sync "1 file is waiting";
+   Connect again → it uploads; device 2 shows it (even with the page
+   already open).
+6. After an hour (or after removing Xeento's access in your Google
+   account's security settings), drop a file → it uploads after a quiet
+   re-approval, or the sidebar says "Reconnect Google Drive"; Reconnect →
+   it uploads.
+7. Delete a page with a file, Delete forever; 24h+ later, on the next
+   start → the file is gone from Drive.
+8. Device 2 Export all with a page it never opened → the zip includes that
+   page's file.
+9. A build without `NEXT_PUBLIC_GOOGLE_CLIENT_ID` → no Drive step, Account
+   & sync says Drive isn't available, files stay on each device.
+
+**Code:** `src/lib/backend/google-drive/`, `src/lib/sync/files.ts`,
+`src/lib/sync/engine.ts` (push), `src/lib/use-files.ts` (resolver)
+
 ---
 
 ## Keyboard shortcuts
@@ -1025,8 +1079,10 @@ Firestore, and the rules stop one account reading or writing another's
 
 ## Known limitations
 
-- Sync (SY-01) doesn't carry files yet: they stay on the device where
-  they were added until Google Drive storage (ROADMAP Phase 5).
+- Files (SY-03) sync only when that device has Google Drive connected;
+  until then they stay on the device where they were added.
+- A device that hasn't shown a file has no copy of it: it needs Drive (and
+  a connection) the first time. Export all and Disconnect fetch them.
 - A single save bigger than about 8MB of page content can't sync
   (Firestore's request limit).
 - `npm run build:static` sets its env variable with POSIX shell syntax, so
@@ -1104,3 +1160,8 @@ Yjs state; older backups still restore). Undo/redo now uses Yjs undo.
 sync setup, ST-05 Account & sync, SY-01 sync between devices, SY-02
 several accounts on one device. Local mode unchanged apart from the
 one-time Welcome screen.
+
+**Roadmap Phase 5 — Google Drive storage:** SY-03 files through the
+user's own Google Drive (setup step, Account & sync Drive row, waiting /
+reconnect states, lazy download with retry, Export all and Disconnect
+fetch missing files).

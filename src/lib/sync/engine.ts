@@ -4,6 +4,7 @@ import { emptyDocument } from "../pages";
 import { applyRemoteUpdates, contentFromUpdates } from "../page-doc";
 import type { FileRecord, FolderRecord, OutboxRecord, PageRecord, TrashRecord } from "../records";
 import { SyncError, type SyncAdapter, type SyncChange, type SyncCursor, type SyncKind } from "../backend/sync";
+import { FileStorageError, type FileStorageAdapter } from "../backend/file-storage";
 import { markPulledThisSession, setSyncStatus } from "./status";
 import { deleteUnusedFiles } from "../files";
 
@@ -25,8 +26,18 @@ async function setSyncState(key: string, value: unknown) {
   await getDb().syncState.put({ key, value });
 }
 
-/** Starts syncing. Returns stop. */
-export function startSyncEngine(adapter: SyncAdapter): () => void {
+let nudge: (() => void) | null = null;
+/** Pushes and pulls now (e.g. right after Google Drive is connected). */
+export function syncNow() {
+  nudge?.();
+}
+
+/**
+ * Starts syncing. `getStorage` returns where file bytes go (Google Drive),
+ * or null while it isn't connected; file changes then wait in the outbox.
+ * Returns stop.
+ */
+export function startSyncEngine(adapter: SyncAdapter, getStorage: () => Promise<FileStorageAdapter | null>): () => void {
   let stopped = false;
   let chain: Promise<unknown> = Promise.resolve();
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -70,21 +81,51 @@ export function startSyncEngine(adapter: SyncAdapter): () => void {
 
   async function push() {
     const db = getDb();
+    const storage = await getStorage();
+    let holdFiles = !storage;
+    let driveProblem: string | null = null;
     for (;;) {
-      const entries = await db.outbox.orderBy("key").limit(PUSH_BATCH).toArray();
+      const queued = await db.outbox.orderBy("key").toArray();
+      const entries = (holdFiles ? queued.filter((e) => e.table !== "files") : queued).slice(0, PUSH_BATCH);
       if (entries.length === 0) break;
       setSyncStatus({ state: "syncing" });
-      const changes = await changesFor(entries);
-      const { newer } = await adapter.push(changes);
-      await applyChanges(newer);
+      let changes = await changesFor(entries);
+      let pushed = entries;
+
+      // File bytes go to Drive first, so a device that sees the metadata can download them.
+      for (const change of storage ? changes.filter((c) => c.kind === "files") : []) {
+        try {
+          if (change.deleted) await storage!.delete(change.id);
+          else {
+            const record = await db.files.get(change.id);
+            if (record) await storage!.upload(change.id, record.blob, { name: record.name, mimeType: record.mimeType });
+          }
+        } catch (error) {
+          if (!(error instanceof FileStorageError)) throw error;
+          if (error.kind === "offline") throw new SyncError("offline", error.message);
+          if (error.kind !== "auth" && error.kind !== "quota") throw new SyncError("unknown", error.message);
+          // Drive needs reconnecting, or is full: files wait, everything else syncs.
+          driveProblem = error.message;
+          holdFiles = true;
+          changes = changes.filter((c) => c.kind !== "files");
+          pushed = entries.filter((e) => e.table !== "files");
+          break;
+        }
+      }
+
+      if (changes.length > 0) {
+        const { newer } = await adapter.push(changes);
+        await applyChanges(newer);
+      }
       // Drop what was pushed, unless it changed again meanwhile.
       await db.transaction("rw", db.outbox, async () => {
-        for (const entry of entries) {
+        for (const entry of pushed) {
           const now = await db.outbox.get(entry.key);
           if (now && now.queuedAt === entry.queuedAt) await db.outbox.delete(entry.key);
         }
       });
     }
+    setSyncStatus({ filesWaiting: await db.outbox.where("key").startsWith("files:").count(), driveProblem });
   }
 
   async function pullAndPush() {
@@ -135,6 +176,7 @@ export function startSyncEngine(adapter: SyncAdapter): () => void {
     if (count > 0) schedulePush();
   });
   const onFocus = () => void serial(pullAndPush).then(subscribeRemote);
+  nudge = onFocus;
   window.addEventListener("focus", onFocus);
   window.addEventListener("online", onFocus);
 
@@ -145,6 +187,7 @@ export function startSyncEngine(adapter: SyncAdapter): () => void {
 
   return () => {
     stopped = true;
+    nudge = null;
     outboxWatch.unsubscribe();
     unsubscribeRemote?.();
     if (pushTimer) clearTimeout(pushTimer);

@@ -6,6 +6,7 @@ import type { FileRecord, FolderRecord, PageRecord, PageUpdateRecord, TrashRecor
 import { downloadBlob } from "./download";
 import { formatBytes } from "./files";
 import { migrateAllPageDocs } from "./page-doc";
+import { fetchMissingReferencedFiles } from "./sync/files";
 import { toast } from "@/components/ui/toast";
 
 const BACKUP_VERSION = 1;
@@ -33,6 +34,13 @@ interface BackupManifest {
  * and every file. Unlike Markdown export, restoring it loses nothing.
  */
 export async function downloadBackup(db: XeentoDb = getDb(), fileName = "xeento-backup"): Promise<void> {
+  // Sync mode: include files that so far are only in Google Drive.
+  if (db === getDb()) {
+    const missing = await fetchMissingReferencedFiles();
+    if (missing > 0) {
+      toast.warn(`${missing} ${missing === 1 ? "file is" : "files are"} only on other devices and couldn't be fetched from Google Drive, so the backup won't include them.`);
+    }
+  }
   // The zip is built in memory before the download can start, so a large
   // workspace can look like nothing happened. Warn if it's taking too long.
   let sizeLabel = "";

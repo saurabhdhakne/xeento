@@ -255,7 +255,7 @@ under the daily read/write/delete limits. And: `npm run test:rules` proves
 user B in the same project can't read or write user A's data; signing out
 of A and into B on one browser shows only B's notes.
 
-### [ ] Phase 5 — Google Drive storage
+### [x] Phase 5 — Google Drive storage
 
 - Google Drive adapter: Google Identity Services, `drive.file` scope, files
   in a `Xeento` folder. On the web, tokens are short-lived; handle quiet

@@ -121,6 +121,9 @@ come before implementation rather than after mistakes.
 - **papaparse** (MIT): CSV parsing (Notion database → table block)
 - **Dexie** + `dexie-react-hooks`: IndexedDB storage, the local store in
   every mode
+- **Google Identity Services** (`accounts.google.com/gsi/client`, loaded
+  at runtime, not an npm package) + Drive REST via `fetch`: Sync mode's
+  file storage, `drive.file` scope, client ID only (never a secret)
 - **firebase** (Apache-2.0): Sync mode's Auth + Firestore, client-side
   only. Dev: **firebase-tools** (MIT, emulators) and
   **@firebase/rules-unit-testing** (Apache-2.0)
@@ -237,7 +240,14 @@ before changing it.
   remote versions that won / pull since an opaque cursor / subscribe;
   `SyncChange` with tombstones and `changedAt`; `Synced*` types drop
   device-only fields and page `content`; `SyncError` by cause),
-  `file-storage.ts` (`FileStorageAdapter`, used from Phase 5).
+  `file-storage.ts` (`FileStorageAdapter`: upload / download as `File` /
+  delete by Xeento file id; `FileStorageError` by cause).
+  `backend/google-drive/`: `token.ts` (GIS token flow, token cached per
+  account in localStorage until expiry, quiet re-approval with
+  `prompt: ""`, `driveAvailable` = `NEXT_PUBLIC_GOOGLE_CLIENT_ID` set),
+  `drive-adapter.ts` (`Xeento` folder; each file tagged with appProperty
+  `xeentoFileId`, found by query, so no Drive ids are stored; multipart
+  ≤5MB, resumable above; 401 drops the cached token).
   `backend/firebase/`: the only implementation. `config.ts` parses the
   pasted web config without evaluating it; `app.ts` (one app per config,
   **stable app name** because Firebase stores the session under it;
@@ -256,7 +266,18 @@ before changing it.
   deletes orphan Yjs rows after a full pull), `account.ts` (start sync,
   copy Local notes into an account, Disconnect, sign out keep/remove),
   `setup.ts` (what the setup UI calls, so components stay
-  backend-neutral), `status.ts` (`useSyncStatus`).
+  backend-neutral), `status.ts` (`useSyncStatus`; `filesWaiting`,
+  `driveProblem`), `files.ts` (Drive connection per account in that
+  account's `syncState` "drive"; `connectDrive` / `disconnectDrive`;
+  `fileStorageFor(uid)` for the engine; `downloadMissingFile` stores a
+  fetched file in a remote-marked transaction so it isn't uploaded back;
+  `fetchMissingReferencedFiles` before Export all and Disconnect).
+  Engine push uploads/deletes file bytes on Drive before pushing their
+  metadata; while Drive is missing, needs reconnecting or is full, `files`
+  outbox entries wait and everything else syncs. Pulled file metadata is
+  ignored: files download lazily. `syncNow()` after connecting Drive.
+  `use-files.ts` resolver: Dexie first, then Drive, retrying "not in Drive
+  yet" every 5s for 2 minutes (the page can arrive before its files).
   `sync-settings.ts`: device-only mode/config/uid in localStorage
   (`useSyncSettings` is null until hydrated).
 - **Sync gotchas:**
@@ -273,6 +294,9 @@ before changing it.
     so would duplicate the text. Opening such a page waits for its rows.
   - Trash tombstones don't delete Yjs rows on apply (restore and delete
     forever look the same); orphans are swept after a full pull.
+  - Google's popup must open from a click: components preload the GIS
+    script (`loadGoogleIdentity`) when a Connect button renders, so the
+    click isn't delayed by the script load.
   - Switching account or mode reloads the page (`getDb()` is fixed per
     load). `deleteUnusedFiles` waits for this session's pull and an
     empty outbox in Sync mode.
@@ -423,8 +447,8 @@ Flagged on purpose. Don't fix these unless asked.
 
 ## Not yet built
 
-See [ROADMAP.md](ROADMAP.md): file sync through the user's Google Drive
-(Phase 5), hosting, databases, Tauri apps, bring-your-own-key AI. Build history is in
+See [ROADMAP.md](ROADMAP.md): data portability (Phase 6), hosting,
+databases, Tauri apps, bring-your-own-key AI. Build history is in
 FEATURES.md's Changelog.
 
 ---

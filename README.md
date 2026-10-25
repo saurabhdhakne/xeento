@@ -17,8 +17,8 @@ On first launch Xeento asks how you want to use it:
 - **Sync across devices**: notes sync through **your own** Firebase
   project (free plan). Xeento never sees them. Follow
   [docs/setup/firebase.md](docs/setup/firebase.md); the app walks you
-  through it. Files in notes will sync through your own Google Drive
-  (coming next, see [ROADMAP.md](ROADMAP.md)).
+  through it. Files in notes sync through your own Google Drive
+  ([docs/setup/google-drive.md](docs/setup/google-drive.md)).
 
 You can switch later in Settings → Account & sync.
 
@@ -64,12 +64,13 @@ The contents of `out/` are then served from `https://<host>/xeento/`.
 
 ### Environment variables
 
-All are read at build time.
+All are read at build time. Put them in `.env.local` (see `.env.example`).
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `NEXT_PUBLIC_BASE_PATH` | empty | Serve the app from a sub-path |
 | `NEXT_PUBLIC_LINK_PREVIEW_URL` | `<basePath>/api/link-preview` on `npm run build`, empty on `build:static` | Where link metadata is fetched. Empty turns link previews off and hides the setting |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | unset | Google OAuth client ID for Drive file storage in Sync mode ([how to create one](docs/setup/google-drive.md)). Client ID only, never the secret. Unset hides Drive; files stay on each device |
 | `NEXT_PUBLIC_FIREBASE_EMULATORS` | unset | Development only: `1` points Sync mode at local Firebase emulators instead of a real project. Never set it for a real build |
 
 ## Testing the Firestore rules

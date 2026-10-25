@@ -110,8 +110,9 @@ resets at midnight Pacific time.
 ## Files
 
 Images, PDFs and other files in your notes sync through your own Google
-Drive, which you connect separately (coming soon). Until then they stay
-on the device where you added them.
+Drive, which you connect separately: see
+[google-drive.md](google-drive.md). Until you connect it, they stay on the
+device where you added them.
 
 ## Moving to a different project
 

@@ -9,6 +9,7 @@ import { migrateAllPageDocs } from "../page-doc";
 import { getSyncSettings, setSyncSettings } from "../sync-settings";
 import { nanoid } from "nanoid";
 import { startSyncEngine } from "./engine";
+import { fetchMissingReferencedFiles, fileStorageFor } from "./files";
 import { setSyncStatus } from "./status";
 
 // Account-level actions for Sync mode. Anything that changes which
@@ -41,7 +42,7 @@ export async function startSync(): Promise<() => void> {
     deviceId = nanoid();
     await db.syncState.put({ key: "deviceId", value: deviceId });
   }
-  return startSyncEngine(firestoreSyncAdapter(firestore, uid, deviceId));
+  return startSyncEngine(firestoreSyncAdapter(firestore, uid, deviceId), () => fileStorageFor(uid));
 }
 
 /** Number of pages (including Trash) in the Local database. */
@@ -83,13 +84,19 @@ export async function copyLocalNotesIntoAccount(uid: string, onProgress: (done: 
 }
 
 /**
- * Turns sync off (ROADMAP: Disconnect). First downloads a backup of the old
- * Local notes, then the account's notes become the Local notes, so nothing
- * on screen disappears. Signs out of Firebase. Reloads into Local mode.
+ * Turns sync off (ROADMAP: Disconnect). First fetches any files only in
+ * Drive, and downloads a backup of the old Local notes; then the account's
+ * notes become the Local notes, so nothing on screen disappears. Signs out
+ * of Firebase. Reloads into Local mode.
+ *
+ * Returns the number of files that couldn't be fetched without changing
+ * anything, unless `evenIfFilesMissing`.
  */
-export async function disconnectToLocal() {
+export async function disconnectToLocal(evenIfFilesMissing = false): Promise<number | void> {
   const { config, uid } = getSyncSettings();
   if (!uid) return;
+  const missingFiles = await fetchMissingReferencedFiles();
+  if (missingFiles > 0 && !evenIfFilesMissing) return missingFiles;
   const local = openLocalDb();
   const account = getDb();
   try {

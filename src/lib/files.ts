@@ -63,6 +63,18 @@ const FILE_REF = /xeento-file:\/\/([\w-]+)/g;
 // autosave debounce, an import stores files before writing its pages.
 const UNUSED_GRACE_MS = 24 * 60 * 60 * 1000;
 
+/** Ids of every stored file the notes reference, Trash included. */
+export async function referencedFileIds(): Promise<Set<string>> {
+  const db = getDb();
+  const used = new Set<string>();
+  const collect = (content: unknown) => {
+    for (const match of JSON.stringify(content ?? null).matchAll(FILE_REF)) used.add(match[1]);
+  };
+  await db.pages.each((page) => collect(page.content));
+  await db.trash.each((entry) => entry.pages.forEach((page) => collect(page.content)));
+  return used;
+}
+
 /**
  * Deletes stored files that no page references, counting pages in Trash
  * (a restore must bring their files back). Skips files under a day old.
@@ -73,13 +85,7 @@ export async function deleteUnusedFiles(): Promise<void> {
   // so a file another device still references isn't deleted.
   if (activeAccountUid() && (!hasPulledThisSession() || (await db.outbox.count()) > 0)) return;
   await db.transaction("rw", db.files, db.pages, db.trash, async () => {
-    const used = new Set<string>();
-    const collect = (content: unknown) => {
-      for (const match of JSON.stringify(content ?? null).matchAll(FILE_REF)) used.add(match[1]);
-    };
-    await db.pages.each((page) => collect(page.content));
-    await db.trash.each((entry) => entry.pages.forEach((page) => collect(page.content)));
-
+    const used = await referencedFileIds();
     const oldIds = await db.files.where("createdAt").below(Date.now() - UNUSED_GRACE_MS).primaryKeys();
     await db.files.bulkDelete(oldIds.filter((id) => !used.has(id)));
   });

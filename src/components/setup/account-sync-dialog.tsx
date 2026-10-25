@@ -5,6 +5,8 @@ import { X } from "lucide-react";
 import { useSyncSettings } from "@/lib/sync-settings";
 import { useSyncStatus } from "@/lib/sync/status";
 import { disconnectToLocal, signOutAccount } from "@/lib/sync/account";
+import { connectDrive, disconnectDrive, driveAvailable, loadGoogleIdentity, useDriveConnection } from "@/lib/sync/files";
+import { syncNow } from "@/lib/sync/engine";
 import { downloadBackup } from "@/lib/backup";
 import { toast } from "../ui/toast";
 import { SetupWizard } from "./setup-wizard";
@@ -50,7 +52,9 @@ export function AccountSyncDialog({ onClose }: { onClose: () => void }) {
             <dt className="text-muted">Account</dt>
             <dd>{settings.email}</dd>
             <dt className="text-muted">Google Drive</dt>
-            <dd className="text-muted">Not connected yet (coming next). Files stay on this device.</dd>
+            <dd>
+              <DriveRow uid={settings.uid!} problem={status.driveProblem ?? null} waiting={status.filesWaiting ?? 0} />
+            </dd>
             <dt className="text-muted">Status</dt>
             <dd>
               {statusLabel(status.state)}
@@ -99,7 +103,18 @@ export function AccountSyncDialog({ onClose }: { onClose: () => void }) {
                       )
                     ) {
                       setBusy(true);
-                      void disconnectToLocal().catch(() => {
+                      void (async () => {
+                        const missing = await disconnectToLocal();
+                        if (
+                          typeof missing === "number" &&
+                          window.confirm(
+                            `${missing} ${missing === 1 ? "file" : "files"} added on other devices couldn't be fetched from Google Drive and will be missing in Local mode. Turn sync off anyway?`,
+                          )
+                        ) {
+                          await disconnectToLocal(true);
+                        }
+                        setBusy(false);
+                      })().catch(() => {
                         setBusy(false);
                         toast.error("Couldn't turn sync off. Nothing was changed.");
                       });
@@ -123,6 +138,80 @@ export function AccountSyncDialog({ onClose }: { onClose: () => void }) {
               Export all
             </button>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DriveRow({ uid, problem, waiting }: { uid: string; problem: string | null; waiting: number }) {
+  const connection = useDriveConnection();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (driveAvailable) void loadGoogleIdentity().catch(() => {});
+  }, []);
+
+  if (!driveAvailable) return <span className="text-muted">Not available in this version of Xeento. Files stay on each device.</span>;
+  if (connection === undefined) return null;
+
+  const connect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await connectDrive(uid);
+      syncNow();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const link = "text-accent hover:underline disabled:opacity-50";
+
+  return (
+    <div className="space-y-1">
+      {connection ? (
+        <p>Connected{connection.email ? ` as ${connection.email}` : ""}.</p>
+      ) : (
+        <p className="text-muted">Not connected. Files stay on this device until you connect.</p>
+      )}
+      {problem && <p className="text-amber-700 dark:text-amber-400">{problem}</p>}
+      {waiting > 0 && (
+        <p className="text-muted">
+          {waiting} {waiting === 1 ? "file is" : "files are"} waiting to upload.
+        </p>
+      )}
+      {error && (
+        <p className="text-red-600 dark:text-red-400" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-3">
+        {!connection && (
+          <button type="button" disabled={busy} onClick={connect} className={link}>
+            Connect Google Drive
+          </button>
+        )}
+        {connection && (
+          <button type="button" disabled={busy} onClick={connect} className={link}>
+            Reconnect
+          </button>
+        )}
+        {connection && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm("Disconnect Google Drive on this device? Files already in Drive stay there; new files wait until you reconnect.")) {
+                setBusy(true);
+                void disconnectDrive(uid).finally(() => setBusy(false));
+              }
+            }}
+            className={link}
+          >
+            Disconnect
+          </button>
         )}
       </div>
     </div>

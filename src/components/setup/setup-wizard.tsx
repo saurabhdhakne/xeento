@@ -15,11 +15,12 @@ import {
 import { activateAccount, copyLocalNotesIntoAccount, countLocalPages } from "@/lib/sync/account";
 import { linkPreviewsAvailable } from "@/lib/link-preview";
 import { setSyncSettings } from "@/lib/sync-settings";
+import { connectDrive, driveAvailable, loadGoogleIdentity } from "@/lib/sync/files";
 
 const GUIDE_URL = "https://github.com/saurabhdhakne/xeento/blob/main/docs/setup/firebase.md";
 
-type Step = "welcome" | "project" | "config" | "rules" | "account" | "notes" | "done";
-const ORDER: Step[] = ["welcome", "project", "config", "rules", "account", "notes", "done"];
+type Step = "welcome" | "project" | "config" | "rules" | "account" | "drive" | "notes" | "done";
+const ORDER: Step[] = ["welcome", "project", "config", "rules", "account", "drive", "notes", "done"];
 
 /**
  * First-launch Welcome (Local or Sync), and the Sync setup: Firebase
@@ -32,16 +33,19 @@ export function SetupWizard({ startAt = "welcome", onCancel }: { startAt?: Step;
   const [config, setConfig] = useState<FirebaseWebConfig | null>(null);
   const [account, setAccount] = useState<{ uid: string; email: string | null } | null>(null);
   const [localPages, setLocalPages] = useState<number | null>(null);
+  const [driveEmail, setDriveEmail] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     void countLocalPages().then(setLocalPages);
   }, []);
 
   const go = (to: Step) => setStep(to);
+  // Steps that don't apply: Drive without a client ID, notes without Local pages.
+  const applies = (s: Step) => !(s === "drive" && !driveAvailable) && !(s === "notes" && !localPages);
+  const next = (from: Step) => ORDER.slice(ORDER.indexOf(from) + 1).find(applies) ?? "done";
   const back = () => {
-    const prev = ORDER[ORDER.indexOf(step) - 1];
-    if (step === "done" && localPages === 0) setStep("account");
-    else if (prev && !(prev === "welcome" && startAt !== "welcome")) setStep(prev);
+    const prev = ORDER.slice(0, ORDER.indexOf(step)).reverse().find(applies);
+    if (prev && !(prev === "welcome" && startAt !== "welcome")) setStep(prev);
   };
   const cancel = () => {
     if (!window.confirm("Stop setting up sync? Nothing will change on this device.")) return;
@@ -72,9 +76,12 @@ export function SetupWizard({ startAt = "welcome", onCancel }: { startAt?: Step;
             config={config}
             onSignedIn={(user) => {
               setAccount(user);
-              go(localPages ? "notes" : "done");
+              go(next("account"));
             }}
           />
+        )}
+        {step === "drive" && account && (
+          <DriveStep uid={account.uid} email={driveEmail} onConnected={setDriveEmail} onDone={() => go(next("drive"))} />
         )}
         {step === "notes" && account && localPages !== null && (
           <NotesStep uid={account.uid} count={localPages} onDone={() => go("done")} />
@@ -85,7 +92,11 @@ export function SetupWizard({ startAt = "welcome", onCancel }: { startAt?: Step;
               Signed in as <strong>{account.email}</strong>. Your notes are saved on this device and sync to your Firebase
               project. The sidebar shows the sync status.
             </p>
-            <p className="text-muted">Files in notes (images, PDFs) will sync once Google Drive is connected (coming next).</p>
+            <p className="text-muted">
+              {driveEmail
+                ? `Files in notes (images, PDFs) sync through Google Drive (${driveEmail}).`
+                : "Files in notes (images, PDFs) stay on the device they were added on until you connect Google Drive (Settings → Account & sync)."}
+            </p>
           </Section>
         )}
 
@@ -378,13 +389,81 @@ export function AccountForm({
   );
 }
 
+function DriveStep({
+  uid,
+  email,
+  onConnected,
+  onDone,
+}: {
+  uid: string;
+  email: string | null | undefined;
+  onConnected: (email: string | null) => void;
+  onDone: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void loadGoogleIdentity().catch(() => {});
+  }, []);
+
+  return (
+    <Section title="5. Connect Google Drive">
+      <p>
+        Images, PDFs and other files in your notes sync through your own Google Drive, in a folder named Xeento. Xeento
+        can only see the files it creates there.
+      </p>
+      {email !== undefined ? (
+        <p className="text-green-700 dark:text-green-400">Connected{email ? ` as ${email}` : ""}.</p>
+      ) : (
+        <p className="text-muted">You can skip this and connect later in Settings → Account & sync.</p>
+      )}
+      {error && (
+        <p className="text-red-600 dark:text-red-400" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        {email === undefined ? (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  onConnected((await connectDrive(uid)).email);
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className={primaryButton}
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect Google Drive"}
+            </button>
+            <button type="button" disabled={busy} onClick={onDone} className={secondaryButton}>
+              Skip for now
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={onDone} className={primaryButton}>
+            Next
+          </button>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 function NotesStep({ uid, count, onDone }: { uid: string; count: number; onDone: () => void }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Section title="5. Bring your existing notes">
+    <Section title={`${driveAvailable ? 6 : 5}. Bring your existing notes`}>
       <p>
         This device has {count} {count === 1 ? "page" : "pages"} (including Trash) from before sync. Copy them into your
         account so they sync too? They also stay in Local mode on this device.

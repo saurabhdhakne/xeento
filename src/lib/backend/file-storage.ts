@@ -3,10 +3,21 @@
 // table stays the local cache; blocks keep `xeento-file://<id>` URLs.
 
 export interface FileStorageAdapter {
-  /** Stores the remote copy of a file under Xeento's file id. */
+  /** Stores the remote copy of a file under Xeento's file id. Does nothing if it's already there. */
   upload(fileId: string, blob: Blob, meta: { name: string; mimeType: string }): Promise<void>;
-  /** Fetches the remote copy, e.g. on a local cache miss. */
-  download(fileId: string): Promise<Blob>;
+  /** Fetches the remote copy, e.g. on a local cache miss, with its name and type. */
+  download(fileId: string): Promise<File>;
   /** Removes the remote copy. Succeeds if it's already gone. */
   delete(fileId: string): Promise<void>;
+}
+
+/** A failed file operation, by cause, so the UI can explain it without knowing the backend. */
+export class FileStorageError extends Error {
+  constructor(
+    /** auth: access expired or was refused (reconnect); notFound: no remote copy (yet). */
+    readonly kind: "auth" | "notFound" | "offline" | "quota" | "unknown",
+    message: string,
+  ) {
+    super(message);
+  }
 }

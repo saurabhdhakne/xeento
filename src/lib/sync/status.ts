@@ -7,6 +7,10 @@ export interface SyncStatus {
   /** Plain-language explanation for "error" (and "offline"). */
   message?: string;
   lastSyncedAt: number | null;
+  /** Files waiting to upload to Google Drive (not connected, or a problem below). */
+  filesWaiting?: number;
+  /** Why files can't upload right now (reconnect needed, Drive full), or null. */
+  driveProblem?: string | null;
 }
 
 let pulledThisSession = false;
