@@ -53,9 +53,15 @@ shows the important lines, and links to the real file.
 
 ## A note on history
 
-Git has three commits: `Initial commit` (Milestones 1–3 plus the polish
-round), `Milestone 4` and `Module 5`. So the exact order *inside* Milestones
-1–3 isn't recorded in git. This guide rebuilds that order from:
+This guide covers Milestones 1–5, which are git's first three commits:
+`Initial commit` (Milestones 1–3 plus the polish round), `Milestone 4` and
+`Module 5`. Later commits add the optional sync work (adapter interfaces,
+Yjs page content, Firebase, Google Drive; Dexie v5–v6). The guide doesn't
+cover that yet: see [ROADMAP.md](../../ROADMAP.md) Phases 1–6 and
+[CLAUDE.md](../../CLAUDE.md).
+
+The exact order *inside* Milestones 1–3 isn't recorded in git. This guide
+rebuilds that order from:
 
 - FEATURES.md's Changelog (which lists what each milestone added), and
 - the Dexie schema versions in [`src/lib/db.ts`](../../src/lib/db.ts): v1 =
