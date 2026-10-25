@@ -270,7 +270,7 @@ of A and into B on one browser shows only B's notes.
 25MB/100MB limits still apply; disconnecting and reconnecting Drive keeps
 existing files working.
 
-### [ ] Phase 6 — Data portability
+### [x] Phase 6 — Data portability
 
 - Upload existing local notes during setup (wizard step 7).
 - "Export all" is the full backup (DS-04, lossless, includes Yjs state)

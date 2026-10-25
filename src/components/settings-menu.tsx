@@ -13,6 +13,7 @@ import { ImportProgressDialog } from "./import/import-progress-dialog";
 import { LINK_PREVIEWS_SETTING_KEY, linkPreviewsAvailable } from "@/lib/link-preview";
 import { useLocalStorageFlag } from "@/lib/use-local-storage-flag";
 import { AccountSyncDialog } from "./setup/account-sync-dialog";
+import { activeAccountUid } from "@/lib/sync-settings";
 
 export function SettingsMenu() {
   const { progress, summary, run, close: closeImportDialog } = useImportFlow();
@@ -171,7 +172,9 @@ export function SettingsMenu() {
           e.target.value = "";
           if (!file) return;
           const confirmed = window.confirm(
-            "Restoring replaces everything in this workspace (pages, folders, files and Trash) with the backup. Continue?",
+            activeAccountUid()
+              ? "Restoring replaces everything in this account (pages, folders, files and Trash) with the backup, on all your devices. Changes made on other devices since the backup are lost. Continue?"
+              : "Restoring replaces everything in this workspace (pages, folders, files and Trash) with the backup. Continue?",
           );
           if (!confirmed) return;
           void restoreBackup(file)

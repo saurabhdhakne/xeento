@@ -6,6 +6,6 @@
     "firestore": { "port": 8085 },
     "auth": { "port": 9099 },
     "ui": { "enabled": false },
-    "singleProjectMode": true
+    "singleProjectMode": false
   }
 }

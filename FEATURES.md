@@ -800,6 +800,42 @@ undo.
 **Code:** `src/lib/page-doc.ts`, `src/components/editor/block-editor.tsx`,
 `src/lib/db.ts` (v5)
 
+### DS-06 Move to a new Firebase project; restore in Sync mode
+
+**Behavior:** Notes move between Firebase projects without losing pages,
+folders, Trash, files or edit history, either by **Export all** → set up
+the new project → **Restore from backup**, or by **Disconnect (back to
+Local)** → **Turn on sync** with the new project → **Copy my notes**
+(guide: `docs/setup/firebase.md`). Export all always works, offline too;
+files that are only in Google Drive and can't be fetched are named in a
+warning. Restoring a backup while syncing replaces the account on **all**
+devices (Xeento asks first): the restore becomes a new "generation", and
+other devices drop their copy and download it fresh when they next start
+or regain focus, so edits made there after the backup don't merge back
+in. Older backups (no `yjs/`) restore into an account too.
+
+**Test:** (two devices; two Firebase projects, or the emulators)
+1. In project 1, make pages, a sub-page, a favourite, a folder, a Trash
+   entry, an image and several edits. Export all. Sign out → Use a
+   different Firebase project → set up project 2 → Restore the backup →
+   identical pages, folders, Trash and content; the image shows; Google
+   Drive gets no duplicate copy. A second device signing in to project 2
+   sees the same.
+2. Same data in project 1: Disconnect (back to Local) → Turn on sync with
+   project 2 → Copy my notes → identical.
+3. Two devices on one account. Export all on device 1; then on device 2
+   edit a page and add a page. Restore the backup on device 1 → the
+   confirm says "on all your devices"; device 2 (switch to its window) →
+   shows exactly the backup: no later edit, no extra page, nothing
+   doubled. New edits on either device sync normally afterwards.
+4. Network off, Export all → the backup downloads; a warning names files
+   only in Drive.
+5. Restore a backup made before Yjs (no `yjs/` folder) into an account →
+   pages open with their content and sync.
+
+**Code:** `src/lib/backup.ts`, `src/lib/sync/engine.ts` (`checkGeneration`),
+`src/lib/backend/firebase/sync-adapter.ts` (epochs), `docs/setup/firebase.md`
+
 ---
 
 ## Settings and theme
@@ -1165,3 +1201,7 @@ one-time Welcome screen.
 user's own Google Drive (setup step, Account & sync Drive row, waiting /
 reconnect states, lazy download with retry, Export all and Disconnect
 fetch missing files).
+
+**Roadmap Phase 6 — Data portability:** DS-06 moving to a new Firebase
+project (backup/restore or Local + copy), restore in Sync mode replaces
+the account on all devices (generations), offline Export all.

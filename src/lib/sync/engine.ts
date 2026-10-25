@@ -128,14 +128,49 @@ export function startSyncEngine(adapter: SyncAdapter, getStorage: () => Promise<
     setSyncStatus({ filesWaiting: await db.outbox.where("key").startsWith("files:").count(), driveProblem });
   }
 
+  /**
+   * A restore replaces the account on every device (see SyncAdapter's
+   * generations). Restored here: push it all as the new generation, then
+   * publish it. Restored elsewhere: drop this device's copy and reload, so
+   * nothing (open editors included) keeps the old history. Returns false
+   * when this device is reloading.
+   */
+  async function checkGeneration(): Promise<boolean> {
+    const pending = await getSyncState<string>("pendingEpoch");
+    if (pending) {
+      adapter.useEpoch(pending);
+      await push();
+      await adapter.setEpoch(pending);
+      await setSyncState("epoch", pending);
+      await getDb().syncState.delete("pendingEpoch");
+      return true;
+    }
+    const remote = await adapter.getEpoch();
+    const local = (await getSyncState<string>("epoch")) ?? null;
+    if (remote === null || remote === local) return true;
+    adapter.useEpoch(remote);
+    if ((await getSyncState("cursor")) == null) {
+      // Never pulled yet: there's nothing old to drop.
+      await setSyncState("epoch", remote);
+      return true;
+    }
+    stopped = true;
+    await resetForGeneration(remote);
+    window.location.reload();
+    return false;
+  }
+
   async function pullAndPush() {
+    if (!(await checkGeneration())) return;
     await pull();
     await push();
     setSyncStatus({ state: "synced", lastSyncedAt: Date.now() });
   }
 
   async function startUp() {
+    adapter.useEpoch((await getSyncState<string>("epoch")) ?? null);
     await pullAndPush();
+    if (stopped) return;
     // A full pull has every collection consistent, so rows of pages that
     // are in neither the workspace nor Trash were deleted for good elsewhere.
     await deleteOrphanPageDocs();
@@ -148,6 +183,7 @@ export function startSyncEngine(adapter: SyncAdapter, getStorage: () => Promise<
     pushTimer = setTimeout(
       () =>
         void serial(async () => {
+          if (!(await checkGeneration())) return;
           await push();
           setSyncStatus({ state: "synced", lastSyncedAt: Date.now() });
         }),
@@ -310,6 +346,17 @@ export async function applyChanges(changes: SyncChange[]) {
     if (!applyRemoteUpdates(pageId, updates)) needContent.add(pageId);
   }
   if (needContent.size > 0) await refreshContent([...needContent]);
+}
+
+/** Another device restored a backup: forget this account's notes here (not queued), so a full pull brings the new generation. */
+async function resetForGeneration(epoch: string) {
+  const db = getDb();
+  await db.transaction("rw", [db.pages, db.folders, db.trash, db.pageUpdates, db.outbox, db.syncState], async () => {
+    markRemoteTransaction();
+    await Promise.all([db.pages.clear(), db.folders.clear(), db.trash.clear(), db.pageUpdates.clear(), db.outbox.clear()]);
+    await db.syncState.delete("cursor");
+    await db.syncState.put({ key: "epoch", value: epoch });
+  });
 }
 
 /** Drops Yjs rows whose page is in neither the workspace nor Trash (the deleting device removes the remote copies). */

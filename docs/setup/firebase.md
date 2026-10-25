@@ -116,8 +116,30 @@ device where you added them.
 
 ## Moving to a different project
 
-Settings → Account & sync → **Export all** downloads a full backup. Set up
-the new project, then use **Restore from backup** while signed in to it.
+Two ways; both keep every page, folder, Trash item, file and edit history.
+
+**A. Backup and restore**
+1. Settings → Account & sync → **Export all**. This downloads a full
+   backup, fetching any files that are only in Google Drive first.
+2. Set up the new project (steps 1–5 above).
+3. Account & sync → **Sign out** → **Use a different Firebase project**,
+   paste the new config and create your account there.
+4. Settings → **Restore from backup…** and choose the file. Everything
+   uploads to the new project.
+
+**B. Through Local mode**
+1. Account & sync → **Disconnect (back to Local)**. Your notes stay on
+   this device in Local mode.
+2. Account & sync → **Turn on sync**, set up the new project, and choose
+   **Copy my notes** when asked.
+
+Either way, the old project keeps its copy until you delete that Firebase
+project yourself (Firebase console → Project settings → Delete project).
+
+**Restoring within the same project** replaces the account's notes on all
+your devices: they drop their copy and download the restored notes the
+next time they open or come back to Xeento. Changes made on other devices
+after the backup are lost, so Xeento asks first.
 
 ## Troubleshooting
 

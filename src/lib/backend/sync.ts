@@ -68,6 +68,17 @@ export interface SyncAdapter {
   pull(since: SyncCursor): Promise<PullResult>;
   /** Live remote changes after `since`. Returns an unsubscribe function. */
   subscribe(since: SyncCursor, onChanges: (result: PullResult) => void, onError: (error: unknown) => void): () => void;
+
+  // Generations: a restore replaces the account on every device. Each
+  // restore publishes a new generation id; Yjs updates are stamped with the
+  // generation they belong to, and updates from other generations are
+  // ignored, so edits made before a restore can't merge back in.
+  /** The account's current generation (null before any restore). */
+  getEpoch(): Promise<string | null>;
+  /** Publishes a new generation (after the restored data is pushed). */
+  setEpoch(epoch: string): Promise<void>;
+  /** The generation this device stamps on pushes and accepts on pulls. */
+  useEpoch(epoch: string | null): void;
 }
 
 /** A failed push/pull, by cause, so the UI can explain it without knowing the backend. */

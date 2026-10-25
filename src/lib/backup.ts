@@ -7,6 +7,7 @@ import { downloadBlob } from "./download";
 import { formatBytes } from "./files";
 import { migrateAllPageDocs } from "./page-doc";
 import { fetchMissingReferencedFiles } from "./sync/files";
+import { activeAccountUid } from "./sync-settings";
 import { toast } from "@/components/ui/toast";
 
 const BACKUP_VERSION = 1;
@@ -126,4 +127,7 @@ export async function restoreBackup(zipFile: File): Promise<void> {
   // Older backups have no yjs/: build it from `content`. The restore is
   // this device's own change, so this is safe in an account database too.
   await migrateAllPageDocs();
+  // Sync mode: the restore becomes the account's new generation, replacing
+  // it on every device once pushed (sync/engine.ts checkGeneration).
+  if (activeAccountUid()) await db.syncState.put({ key: "pendingEpoch", value: nanoid() });
 }

@@ -9,6 +9,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   Timestamp,
   where,
   writeBatch,
@@ -38,6 +39,8 @@ type Cursors = Partial<Record<SyncKind, { s: number; n: number }>>;
 
 export function firestoreSyncAdapter(firestore: Firestore, uid: string, deviceId: string): SyncAdapter {
   const col = (kind: SyncKind) => collection(firestore, "users", uid, kind);
+  const epochRef = doc(firestore, "users", uid, "meta", "epoch");
+  let epoch: string | null = null;
   const parseCursor = (cursor: SyncCursor): Cursors => (cursor ? JSON.parse(cursor) : {});
   const sinceQuery = (kind: SyncKind, cursors: Cursors) => {
     const at = cursors[kind];
@@ -60,6 +63,7 @@ export function firestoreSyncAdapter(firestore: Firestore, uid: string, deviceId
         cursors[kind] = { s: at.seconds, n: at.nanoseconds };
       }
       if (d.deviceId === deviceId) continue;
+      if (kind === "pageUpdates" && (d.epoch ?? null) !== epoch) continue; // from before/after a restore
       if (kind === "pageUpdates") {
         const [base, part] = snap.id.split("~");
         if (!chunks.has(base)) chunks.set(base, new Map());
@@ -153,6 +157,7 @@ export function firestoreSyncAdapter(firestore: Firestore, uid: string, deviceId
               pageId,
               update: Bytes.fromUint8Array(slice),
               ...(p === 0 ? { parts } : {}),
+              epoch,
               changedAt: change.changedAt,
               deviceId,
               syncedAt: serverTimestamp(),
@@ -180,6 +185,27 @@ export function firestoreSyncAdapter(firestore: Firestore, uid: string, deviceId
       } catch (error) {
         throw toSyncError(error);
       }
+    },
+
+    async getEpoch() {
+      try {
+        const snap = await getDoc(epochRef);
+        return snap.exists() ? (snap.data().value as string) : null;
+      } catch (error) {
+        throw toSyncError(error);
+      }
+    },
+
+    async setEpoch(value) {
+      try {
+        await setDoc(epochRef, { value, syncedAt: serverTimestamp() });
+      } catch (error) {
+        throw toSyncError(error);
+      }
+    },
+
+    useEpoch(value) {
+      epoch = value;
     },
 
     subscribe(since, onChanges, onError) {

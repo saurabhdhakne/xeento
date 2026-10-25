@@ -292,6 +292,13 @@ before changing it.
     (`createPage`, duplicate, import, restore, copy into account).
     Account databases never build it from `content`: two devices doing
     so would duplicate the text. Opening such a page waits for its rows.
+  - **Generations:** restoring a backup into an account marks
+    `syncState` "pendingEpoch"; the engine pushes everything, then
+    publishes it to `users/{uid}/meta/epoch`. Yjs updates are stamped with
+    their generation and pulls ignore other generations; a device that
+    sees a newer generation clears its copy (not queued) and reloads, so
+    no open editor keeps the old history. Checked before every pull and
+    push (one read each).
   - Trash tombstones don't delete Yjs rows on apply (restore and delete
     forever look the same); orphans are swept after a full pull.
   - Google's popup must open from a click: components preload the GIS
@@ -466,7 +473,9 @@ npm run test:rules  # Firestore rules tests in the emulator. Needs Java 21+
                     # on this machine)
 ```
 
-Sync mode against local emulators (dev only): `npx firebase
+Sync mode against local emulators (dev only; `singleProjectMode` is off so
+a second project, e.g. `demo-xeento2`, works too, but the Auth emulator
+shares one user list across projects): `npx firebase
 emulators:start --only firestore,auth --project demo-xeento`, then
 `NEXT_PUBLIC_FIREBASE_EMULATORS=1 npm run dev`, and paste a config with
 `projectId: "demo-xeento"`.
